@@ -2,15 +2,16 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+import random
 
 # Set up page config
-st.set_page_config(page_title="GAC Showroom - Sales Product Knowledge Quiz", layout="wide")
+st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", layout="wide")
 
 # --- GLOBAL DATABASE CONFIG ---
-# This creates a unique public bucket link to sync scores across different devices
-DB_URL = "https://kvdb.io/MN87X9WvSgWj8U3n8v5X9f/gac_rak_quiz_scores"
+# Using a fresh, dedicated bucket data string to track lifetime accumulated metrics
+DB_URL = "https://kvdb.io/MN87X9WvSgWj8U3n8v5X9f/gac_rak_showroom_cumulative_leaderboard"
 
-def load_global_scores():
+def load_global_db():
     try:
         response = requests.get(DB_URL)
         if response.status_code == 200:
@@ -19,192 +20,147 @@ def load_global_scores():
     except:
         return {}
 
-def save_score_global(name, score_str):
-    scores = load_global_scores()
-    scores[name] = score_str
+def update_lifetime_score(name, score_to_add, total_added):
+    db = load_global_db()
+    if name not in db:
+        db[name] = {"correct": 0, "attempted": 0}
+    
+    # Accumulate scores over time
+    db[name]["correct"] += score_to_add
+    db[name]["attempted"] += total_added
+    
     try:
-        requests.post(DB_URL, data=json.dumps(scores))
+        requests.post(DB_URL, data=json.dumps(db))
     except:
         pass
 
-# --- CUSTOM SPEC DATA FROM YOUR EXCEL ---
-GAC_DATA = {
-    "EMPOW": {
-        "variants": ["GE", "GL"],
-        "facts": [
-            "The EMPOW comes in both GE and GL trims, both featuring 18\" Aluminum Alloy Wheels with 225/45 tires.",
-            "Both GE and GL trims feature Rain Sensing Wipers and Heated Side Mirrors."
-        ]
-    },
-    "EMPOWR": {
-        "variants": ["2T+8AT GE"],
-        "facts": [
-            "The high-performance EMPOWR comes equipped with a 2T engine paired with an 8AT gearbox.",
-            "Unique styling items on the EMPOWR include a Car Spoiler and high-visibility Front Fixed Callipers."
-        ]
-    },
-    "GS3 EMZOOM": {
-        "variants": ["GB", "GS", "SPORT+"],
-        "facts": [
-            "The high-end SPORT+ variant is exclusively equipped with Automatic Headlights and Power Side Mirrors featuring Auto Folding + Heating.",
-            "The GB and GS trims ride on 225/55R R18 Tires, whereas the SPORT+ has a distinct configuration."
-        ]
-    },
-    "GS4 MAX": {
-        "variants": ["GL+", "GL"],
-        "facts": [
-            "The premium GL+ variant stands out by offering optional R20 Tires with Wheels, whereas the standard GL does not.",
-            "Both GL and GL+ feature Electric Hidden Door Handles and Rain Sensing Front Windshield Wipers."
-        ]
-    },
-    "GS8": {
-        "variants": ["Hybrid GX AWD", "ICE GX AWD", "Desert Raider"],
-        "facts": [
-            "The special 'Desert Raider' edition comes distinctively styled with a Black Edition Grille/Rims, Red GAC Front Logo, and Desert Raider side decals.",
-            "The Desert Raider trim is uniquely optimized for adventure, boasting a Roof Rack set complete with a tent and ladder."
-        ]
-    },
-    "HYPTEC HT": {
-        "variants": ["Elite", "Ultra Gullwing Door"],
-        "facts": [
-            "The HYPTEC HT is powered by advanced Magazine Battery technology utilizing LFP chemistry.",
-            "The Ultra Gullwing Door model features signature upward-opening rear doors, while both models feature 6.6 kW AC charging capability."
-        ]
-    },
-    "M8": {
-        "variants": ["GT", "GX"],
-        "facts": [
-            "The luxury M8 GX variant comes upgraded with Master Specific Wheel Rims and Adaptive Driving Beam headlights.",
-            "Both GT and GX luxury trims feature Side Mirrors with Position Memory and an integrated Reverse Tilt function."
-        ]
-    }
-}
-
-QUIZ_BANK = [
-    {
-        "question": "Which specific GAC GS8 variant comes factory-equipped with a roof rack set, tent, ladder, and custom side decals?",
-        "options": ["Hybrid GX AWD", "ICE GX AWD", "Desert Raider", "GL Link"],
-        "answer": "Desert Raider"
-    },
-    {
-        "question": "What battery technology type is standard across the HYPTEC HT Elite and Ultra variants?",
-        "options": ["Standard Ternary Lithium", "Magazine Battery - LFP", "Solid-State Cell", "Sodium-Ion pack"],
-        "answer": "Magazine Battery - LFP"
-    },
-    {
-        "question": "Which variant of the new GS4 MAX features the distinct upgrade of optional R20 Tires and Wheels?",
-        "options": ["GL", "GL+", "GB", "GS SPORT+"],
-        "answer": "GL+"
-    },
-    {
-        "question": "The high-performance EMPOWR variant pairs its 2.0T engine with which transmission configuration?",
-        "options": ["7-Speed DCT", "CVT", "8-Speed Automatic (8AT)", "6-Speed Manual"],
-        "answer": "8-Speed Automatic (8AT)"
-    },
-    {
-        "question": "On the GAC M8, which trim level upgrades to Master Specific Wheel Rims and Adaptive Driving Beam (ADB) headlights?",
-        "options": ["GT", "GL", "GX", "Comfort"],
-        "answer": "GX"
-    },
-    {
-        "question": "Which GS3 EMZOOM trim level includes Power Side Mirrors with Auto Folding + Heating alongside Automatic Headlights?",
-        "options": ["GB", "GS", "SPORT+", "Standard"],
-        "answer": "SPORT+"
-    },
-    {
-        "question": "What wheel and tire dimension profile is shared across the EMPOW GE and GL sedan variants?",
-        "options": ["17\" / 215/50 Tires", "18\" / 225/45 Tires", "19\" / 235/40 Tires", "16\" / 205/55 Tires"],
-        "answer": "18\" / 225/45 Tires"
-    }
+# --- COMPREHENSIVE PRODUCT KNOWLEDGE POOL ---
+# Generated across all 8 variants sheets to maximize structural coverage
+MASTER_QUESTION_POOL = [
+    # GS8
+    {"question": "Which specific GAC GS8 variant features the 'Desert Raider Kit' including a roof rack set with tent and ladder?", "options": ["Hybrid GX AWD", "ICE GX AWD", "Desert Raider", "GL Trim"], "answer": "Desert Raider"},
+    {"question": "Does the GAC GS8 Desert Raider variant feature a unique Red GAC Front Logo and black edition grille?", "options": ["Yes, exclusively", "No, it is standard on Hybrid", "No, it is only on ICE GX", "It is optional across all"], "answer": "Yes, exclusively"},
+    # HYPTEC HT
+    {"question": "What type of advanced battery architecture chemistry is utilized standard inside the HYPTEC HT Elite?", "options": ["Magazine Battery - LFP", "Standard Lithium Ion", "Solid State Pack", "Nickel Manganese Cobalt"], "answer": "Magazine Battery - LFP"},
+    {"question": "Which HYPTEC HT variant comes equipped with distinctive upward opening doors?", "options": ["Elite", "Ultra Gullwing Door", "Luxury+", "GT Edition"], "answer": "Ultra Gullwing Door"},
+    # M8
+    {"question": "On the premium GAC M8, which variant upgrades to Master Specific Wheel Rims and Adaptive Driving Beam (ADB)?", "options": ["GT", "GX", "GL", "GB"], "answer": "GX"},
+    {"question": "Do both the GT and GX luxury trims of the GAC M8 feature Side Mirrors with Position Memory & Reverse Tilt?", "options": ["Yes, both trims have it", "Only the GX has it", "Only the GT has it", "Neither trim has it"], "answer": "Yes, both trims have it"},
+    # GS3 EMZOOM
+    {"question": "Which GS3 EMZOOM variant uniquely sports the full suite of Automatic Headlights and Power Folding + Heated Side Mirrors?", "options": ["GB", "GS", "SPORT+", "Comfort"], "answer": "SPORT+"},
+    {"question": "What tire profile size is standard on the baseline GAC GS3 EMZOOM GB and GS versions?", "options": ["225/55R R18", "235/55 R20", "19-inch Alloy", "215/60 R17"], "answer": "225/55R R18"},
+    # EMPOW & EMPOWR
+    {"question": "The aggressive GAC EMPOWR variant explicitly pairs its performance setup with what transmission setup?", "options": ["7-Speed DCT", "8-Speed Automatic (8AT)", "CVT", "6-Speed Manual"], "answer": "8-Speed Automatic (8AT)"},
+    {"question": "Which visual aesthetic styling component is factory standard exclusively on the EMPOWR package?", "options": ["Car Spoiler & Front Fixed Calliper", "19\" Aluminum Wheels", "Hidden Door Handles", "Panoramic Sunroof"], "answer": "Car Spoiler & Front Fixed Calliper"},
+    {"question": "What tire dimension configuration is standard across both EMPOW GE and GL sedan variants?", "options": ["225/45 Tires on 18\" Rims", "235/55 Tires on 20\" Rims", "215/50 Tires on 17\" Rims", "255/50 Tires on 20\" Rims"], "answer": "225/45 Tires on 18\" Rims"},
+    # GS4 MAX
+    {"question": "Which specification variant of the GS4 MAX features upgraded R20 Wheels and Tires?", "options": ["GL", "GL+", "GB", "Luxury+"], "answer": "GL+"},
+    {"question": "Do both GL and GL+ variants of the GS4 MAX feature Electric Hidden Door Handles as standard exterior equipment?", "options": ["Yes, both trims", "Only GL+", "Only GL", "Neither trim handles hide"], "answer": "Yes, both trims"},
+    # AION V
+    {"question": "What configuration profile characterizes the standalone luxury variant layout of the electric AION V sheet?", "options": ["Luxury+", "Premium Comfort", "Executive AWD", "Standard Elite"], "answer": "Luxury+"}
 ]
 
-# --- STATE MANAGEMENT ---
+# --- SESSION TRACKING FOR DYNAMIC RANDOMIZATION ---
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
+if "current_quiz_set" not in st.session_state:
+    st.session_state.current_quiz_set = []
 if "quiz_submitted" not in st.session_state:
     st.session_state.quiz_submitted = False
+if "session_correct" not in st.session_state:
+    st.session_state.session_correct = 0
 
-# Load live database scores
-global_scores = load_global_scores()
-
-# --- UI HEADER ---
-st.title("🚘 GAC Showroom Product Knowledge Center")
-st.subheader("Test your team's knowledge on current models & trim variants")
+# --- HEADER UI ---
+st.title("🚘 GAC Showroom Dynamic Training Engine")
+st.subheader("Randomized assessments to master vehicle trims and features")
 st.markdown("---")
 
-# --- SIDEBAR: LEADERBOARD & REGISTRATION ---
+# --- SIDEBAR LEADERBOARD (RANKED BY TOTAL CORRECT) ---
 with st.sidebar:
-    st.header("📋 Representative Sign-In")
+    st.header("📋 Representative Log In")
     
     if not st.session_state.current_user:
-        name = st.text_input("Enter your full name:")
-        if st.button("Register & Start"):
+        name = st.text_input("Enter your full name to start a new test round:")
+        if st.button("Log In & Draw Fresh Quiz 🎲"):
             if name.strip():
                 st.session_state.current_user = name.strip()
-                if name.strip() not in global_scores:
-                    save_score_global(name.strip(), "Not Attempted")
+                # Draw 5 totally random questions from the master pool
+                st.session_state.current_quiz_set = random.sample(MASTER_QUESTION_POOL, min(5, len(MASTER_QUESTION_POOL)))
+                st.session_state.quiz_submitted = False
                 st.rerun()
             else:
-                st.error("Please enter a valid name.")
+                st.error("Please enter your name.")
     else:
-        st.success(f"Logged in as: **{st.session_state.current_user}**")
-        if st.button("Refresh Scoreboard 🔄"):
+        st.success(f"Active Session: **{st.session_state.current_user}**")
+        if st.button("Draw Another New Quiz Set 🔄"):
+            st.session_state.current_quiz_set = random.sample(MASTER_QUESTION_POOL, min(5, len(MASTER_QUESTION_POOL)))
+            st.session_state.quiz_submitted = False
             st.rerun()
-        if st.button("Log Out / New User"):
+        if st.button("Switch Account / Log Out"):
             st.session_state.current_user = None
+            st.session_state.current_quiz_set = []
             st.session_state.quiz_submitted = False
             st.rerun()
             
     st.markdown("---")
-    st.header("🏆 Live Showroom Scoreboard")
+    st.header("🏆 Live Showroom Ranking")
     
-    # Reload latest entries for display
-    latest_scores = load_global_scores()
-    if latest_scores:
-        leaderboard_data = [{"Sales Executive": k, "Score / Status": v} for k, v in latest_scores.items()]
-        st.table(pd.DataFrame(leaderboard_data))
-    else:
-        st.info("No participants registered yet.")
-
-# --- MAIN PAGE: CONTENT & QUIZ ---
-if not st.session_state.current_user:
-    st.info("👋 Welcome! Please register your name in the sidebar panel to access the active training deck and variant quiz.")
-    
-    st.header("📚 Model Variant Quick Reference")
-    cols = st.columns(3)
-    for i, (model, data) in enumerate(GAC_DATA.items()):
-        with cols[i % 3]:
-            with st.container(border=True):
-                st.markdown(f"### **GAC {model}**")
-                st.caption(f"Trims: {', '.join(data['variants'])}")
-                for fact in data['facts']:
-                    st.markdown(f"• {fact}")
-else:
-    st.header(f"✏️ Variant Knowledge Assessment")
-    st.write("Answer the questions below based on the current product catalogs. Good luck!")
-    
-    with st.form("quiz_form"):
-        user_answers = {}
-        for idx, q in enumerate(QUIZ_BANK):
-            st.markdown(f"**Q{idx+1}: {q['question']}**")
-            user_answers[idx] = st.radio("Select the correct answer:", q['options'], key=f"q_{idx}")
-            st.markdown("")
-            
-        submit_button = st.form_submit_button("Submit Assessment")
+    # Pull current data from cloud database
+    raw_db = load_global_db()
+    if raw_db:
+        leaderboard_rows = []
+        for user, data in raw_db.items():
+            correct = data.get("correct", 0)
+            attempted = data.get("attempted", 0)
+            accuracy = (correct / attempted * 100) if attempted > 0 else 0
+            leaderboard_rows.append({
+                "Sales Executive": user,
+                "Cumulative Correct Answers": correct,
+                "Total Questions Seen": attempted,
+                "Lifetime Accuracy": f"{accuracy:.1f}%"
+            })
         
-        if submit_button:
-            correct_count = 0
-            for idx, q in enumerate(QUIZ_BANK):
-                if user_answers[idx] == q['answer']:
-                    correct_count += 1
-            
-            final_score_str = f"{correct_count} / {len(QUIZ_BANK)}"
-            save_score_global(st.session_state.current_user, final_score_str)
-            st.session_state.quiz_submitted = True
-            st.rerun()
+        # Turn into DataFrame and Sort by highest correct answers (Ranked)
+        df_leaderboard = pd.DataFrame(leaderboard_rows)
+        df_leaderboard = df_leaderboard.sort_values(by="Cumulative Correct Answers", ascending=False).reset_index(drop=True)
+        df_leaderboard.index = df_leaderboard.index + 1  # Standardizes rank formatting to start at 1
+        st.table(df_leaderboard)
+    else:
+        st.info("No recorded stats on the scoreboard yet.")
 
-    if st.session_state.quiz_submitted:
+# --- MAIN WINDOW DISPLAY ---
+if not st.session_state.current_user:
+    st.info("👋 **Welcome to the Product Knowledge Hub.** Enter your name in the sidebar menu. The app will generate a completely random selection of questions from the master vehicle variant specification sheet every single time you sign in.")
+else:
+    st.header(f"✏️ 5-Question Adaptive Quiz Round")
+    st.caption("Every attempt updates your cumulative showroom record score dynamically.")
+    
+    if not st.session_state.quiz_submitted:
+        with st.form("dynamic_quiz_form"):
+            user_answers = {}
+            for idx, q in enumerate(st.session_state.current_quiz_set):
+                st.markdown(f"**Q{idx+1}: {q['question']}**")
+                user_answers[idx] = st.radio("Select choice:", q['options'], key=f"dyn_q_{idx}")
+                st.markdown("")
+                
+            submit_round = st.form_submit_button("Submit Answers")
+            
+            if submit_round:
+                correct_count = 0
+                for idx, q in enumerate(st.session_state.current_quiz_set):
+                    if user_answers[idx] == q['answer']:
+                        correct_count += 1
+                
+                # Push metrics to global cumulative ledger database
+                update_lifetime_score(st.session_state.current_user, correct_count, len(st.session_state.current_quiz_set))
+                st.session_state.session_correct = correct_count
+                st.session_state.quiz_submitted = True
+                st.rerun()
+    else:
         st.balloons()
-        latest_scores = load_global_scores()
-        user_score_str = latest_scores.get(st.session_state.current_user, "0 / 0")
-        st.success(f"🎉 Assessment completed! Your score **({user_score_str})** has been uploaded directly to the manager scoreboard.")
+        st.success(f"🎯 **Round Complete!** You scored **{st.session_state.session_correct} / {len(st.session_state.current_quiz_set)}** on this random draw.")
+        st.info("Your points have been added to your lifetime profile record. Check the live scoreboard on the left sidebar to see your current ranking position across the team!")
+        if st.button("Start Another Quiz Immediately"):
+            st.session_state.current_quiz_set = random.sample(MASTER_QUESTION_POOL, min(5, len(MASTER_QUESTION_POOL)))
+            st.session_state.quiz_submitted = False
+            st.rerun()
