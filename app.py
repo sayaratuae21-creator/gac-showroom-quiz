@@ -8,7 +8,7 @@ import random
 st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", layout="wide")
 
 # --- CUSTOM BACKGROUND IMAGE ---
-BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1920&q=80"
+BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
 
 st.markdown(
     f"""
@@ -160,7 +160,15 @@ def draw_new_quiz_round():
     round_questions = []
     for _ in range(5):
         if st.session_state.unanswered_deck:
-            round_questions.append(st.session_state.unanswered_deck.pop(0))
+            original_q = st.session_state.unanswered_deck.pop(0)
+            
+            # Copy question dictionary & shuffle options dynamically!
+            q_copy = dict(original_q)
+            shuffled_options = list(q_copy["options"])
+            random.shuffle(shuffled_options)
+            q_copy["options"] = shuffled_options
+            
+            round_questions.append(q_copy)
             
     st.session_state.current_quiz_set = round_questions
     st.session_state.quiz_submitted = False
@@ -252,7 +260,6 @@ else:
             
             if submit_round:
                 correct_count = 0
-                # Save their selected answers to display in feedback
                 st.session_state.saved_answers = {idx: user_answers[idx] for idx in range(len(st.session_state.current_quiz_set))}
                 
                 for idx, q in enumerate(st.session_state.current_quiz_set):
