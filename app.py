@@ -8,14 +8,11 @@ import random
 st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", layout="wide")
 
 # --- CUSTOM BACKGROUND IMAGE ---
-# You can replace this link with ANY direct image link you want (e.g., from Imgur, Unsplash, or a GAC website)
-BACKGROUND_IMAGE_URL = "https://i.postimg.cc/vHkjvvzB/G"
+BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1920&q=80"
 
-# Inject custom CSS to set the background and style the text cards for readability
 st.markdown(
     f"""
     <style>
-    /* Background image for the entire app */
     [data-testid="stAppViewContainer"] {{
         background-image: url("{BACKGROUND_IMAGE_URL}");
         background-size: cover;
@@ -23,27 +20,21 @@ st.markdown(
         background-repeat: no-repeat;
         background-attachment: fixed;
     }}
-    
-    /* Make the top header area transparent */
     [data-testid="stHeader"] {{
         background: rgba(0,0,0,0);
     }}
-    
-    /* Elegant frosted-glass card so the background car is beautifully visible */
     .block-container {{
-        background-color: rgba(255, 255, 255, 0.45); /* Translucent glass */
-        backdrop-filter: blur(12px); /* Frosted glass effect */
+        background-color: rgba(255, 255, 255, 0.45);
+        backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         padding: 3rem 3rem !important;
         border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.3); 
+        border: 1px solid rgba(255, 255, 255, 0.3);
         box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.3);
         margin-top: 2rem;
         margin-bottom: 2rem;
         max-width: 1100px !important;
     }}
-    
-    /* Style the sidebar to match the glass style */
     [data-testid="stSidebar"] {{
         background-color: rgba(255, 255, 255, 0.88) !important;
     }}
@@ -52,14 +43,18 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- GLOBAL DATABASE CONFIG ---
-DB_URL = "https://kvdb.io/MN87X9WvSgWj8U3n8v5X9f/gac_rak_showroom_cumulative_leaderboard"
+# --- PERMANENT DATABASE CONFIG (JSONBin.io) ---
+# Paste your credentials here:
+BIN_ID = "6a55d6caf5f4af5e298c1651"
+API_KEY = "$2a$10$vJelScEkNfMQ2fA5Au5OrOgFYlZNy8KCgCBsaStqMSQ1tb4t8zn1y"
 
 def load_global_db():
+    url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
+    headers = {"X-Master-Key": API_KEY}
     try:
-        response = requests.get(DB_URL)
+        response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            return response.json()
+            return response.json().get("record", {})
         return {}
     except:
         return {}
@@ -72,13 +67,17 @@ def update_lifetime_score(name, score_to_add, total_added):
     db[name]["correct"] += score_to_add
     db[name]["attempted"] += total_added
     
+    url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Master-Key": API_KEY
+    }
     try:
-        requests.post(DB_URL, data=json.dumps(db))
+        requests.put(url, json=db, headers=headers)
     except:
         pass
 
 # --- COMPREHENSIVE PRODUCT KNOWLEDGE POOL ---
-# 37 distinct, curated questions spanning every single sheet of your specifications
 MASTER_QUESTION_POOL = [
     # AION V
     {"question": "What is the premium trim level name listed on the electric GAC AION V specification sheet?", "options": ["Luxury+", "Elite", "Comfort", "Executive"], "answer": "Luxury+"},
@@ -107,7 +106,7 @@ MASTER_QUESTION_POOL = [
 
     # GS4 MAX
     {"question": "Which specification variant of the GAC GS4 MAX features upgraded R20 Wheels and Tires?", "options": ["GL+", "GL", "GB", "Luxury+"], "answer": "GL+"},
-    {"question": "Do both GL and GL+ variants of the GS4 MAX feature Electric Hidden Door Handles as standard exterior equipment?", "options": ["Yes, both trims", "Only GL+", "Only GL", "Neither trim has them"], "answer": "Yes, both trims"},
+    {"question": "Do both GL and GL+ variants of the GAC GS4 MAX feature Electric Hidden Door Handles as standard exterior equipment?", "options": ["Yes, both trims", "Only GL+", "Only GL", "Neither trim has them"], "answer": "Yes, both trims"},
     {"question": "What active safety and driving assist system is standard across both GS4 MAX GL and GL+ variants?", "options": ["Adaptive Cruise Control & Lane Keep Assist", "Rear parking sensors only", "No active driver assistance", "Basic cruise control only"], "answer": "Adaptive Cruise Control & Lane Keep Assist"},
     {"question": "Does the GAC GS4 MAX GL+ feature a panoramic glass roof?", "options": ["Yes, with electric sunshade", "No, regular metal roof", "No, fixed glass roof without shade", "Optional on GL+ only"], "answer": "Yes, with electric sunshade"},
 
@@ -147,12 +146,10 @@ if "session_correct" not in st.session_state:
     st.session_state.session_correct = 0
 
 def draw_new_quiz_round():
-    # If the user's personal deck runs low, merge and reshuffle the master list
     if len(st.session_state.unanswered_deck) < 5:
         st.session_state.unanswered_deck = list(MASTER_QUESTION_POOL)
         random.shuffle(st.session_state.unanswered_deck)
     
-    # Draw 5 completely unique, unseen questions
     round_questions = []
     for _ in range(5):
         if st.session_state.unanswered_deck:
@@ -175,7 +172,6 @@ with st.sidebar:
         if st.button("Log In & Draw Fresh Quiz 🎲"):
             if name.strip():
                 st.session_state.current_user = name.strip()
-                # Initialize a completely shuffled deck unique to this user session
                 st.session_state.unanswered_deck = list(MASTER_QUESTION_POOL)
                 random.shuffle(st.session_state.unanswered_deck)
                 draw_new_quiz_round()
