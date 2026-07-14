@@ -7,8 +7,44 @@ import random
 # Set up page config
 st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", layout="wide")
 
+# --- CUSTOM BACKGROUND IMAGE ---
+# You can replace this link with ANY direct image link you want (e.g., from Imgur, Unsplash, or a GAC website)
+BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1920&q=80"
+
+# Inject custom CSS to set the background and style the text cards for readability
+st.markdown(
+    f"""
+    <style>
+    /* Background image for the entire app */
+    [data-testid="stAppViewContainer"] {{
+        background-image: url("{BACKGROUND_IMAGE_URL}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    
+    /* Make the top header area transparent */
+    [data-testid="stHeader"] {{
+        background: rgba(0,0,0,0);
+    }}
+    
+    /* Create a beautiful semi-transparent card for the main content so text is highly readable */
+    .block-container {{
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 3rem 3rem !important;
+        border-radius: 15px;
+        box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        max-width: 1100px !important;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- GLOBAL DATABASE CONFIG ---
-# Using a fresh, dedicated bucket data string to track lifetime accumulated metrics
 DB_URL = "https://kvdb.io/MN87X9WvSgWj8U3n8v5X9f/gac_rak_showroom_cumulative_leaderboard"
 
 def load_global_db():
@@ -25,7 +61,6 @@ def update_lifetime_score(name, score_to_add, total_added):
     if name not in db:
         db[name] = {"correct": 0, "attempted": 0}
     
-    # Accumulate scores over time
     db[name]["correct"] += score_to_add
     db[name]["attempted"] += total_added
     
@@ -35,28 +70,20 @@ def update_lifetime_score(name, score_to_add, total_added):
         pass
 
 # --- COMPREHENSIVE PRODUCT KNOWLEDGE POOL ---
-# Generated across all 8 variants sheets to maximize structural coverage
 MASTER_QUESTION_POOL = [
-    # GS8
     {"question": "Which specific GAC GS8 variant features the 'Desert Raider Kit' including a roof rack set with tent and ladder?", "options": ["Hybrid GX AWD", "ICE GX AWD", "Desert Raider", "GL Trim"], "answer": "Desert Raider"},
     {"question": "Does the GAC GS8 Desert Raider variant feature a unique Red GAC Front Logo and black edition grille?", "options": ["Yes, exclusively", "No, it is standard on Hybrid", "No, it is only on ICE GX", "It is optional across all"], "answer": "Yes, exclusively"},
-    # HYPTEC HT
     {"question": "What type of advanced battery architecture chemistry is utilized standard inside the HYPTEC HT Elite?", "options": ["Magazine Battery - LFP", "Standard Lithium Ion", "Solid State Pack", "Nickel Manganese Cobalt"], "answer": "Magazine Battery - LFP"},
     {"question": "Which HYPTEC HT variant comes equipped with distinctive upward opening doors?", "options": ["Elite", "Ultra Gullwing Door", "Luxury+", "GT Edition"], "answer": "Ultra Gullwing Door"},
-    # M8
     {"question": "On the premium GAC M8, which variant upgrades to Master Specific Wheel Rims and Adaptive Driving Beam (ADB)?", "options": ["GT", "GX", "GL", "GB"], "answer": "GX"},
     {"question": "Do both the GT and GX luxury trims of the GAC M8 feature Side Mirrors with Position Memory & Reverse Tilt?", "options": ["Yes, both trims have it", "Only the GX has it", "Only the GT has it", "Neither trim has it"], "answer": "Yes, both trims have it"},
-    # GS3 EMZOOM
     {"question": "Which GS3 EMZOOM variant uniquely sports the full suite of Automatic Headlights and Power Folding + Heated Side Mirrors?", "options": ["GB", "GS", "SPORT+", "Comfort"], "answer": "SPORT+"},
     {"question": "What tire profile size is standard on the baseline GAC GS3 EMZOOM GB and GS versions?", "options": ["225/55R R18", "235/55 R20", "19-inch Alloy", "215/60 R17"], "answer": "225/55R R18"},
-    # EMPOW & EMPOWR
     {"question": "The aggressive GAC EMPOWR variant explicitly pairs its performance setup with what transmission setup?", "options": ["7-Speed DCT", "8-Speed Automatic (8AT)", "CVT", "6-Speed Manual"], "answer": "8-Speed Automatic (8AT)"},
     {"question": "Which visual aesthetic styling component is factory standard exclusively on the EMPOWR package?", "options": ["Car Spoiler & Front Fixed Calliper", "19\" Aluminum Wheels", "Hidden Door Handles", "Panoramic Sunroof"], "answer": "Car Spoiler & Front Fixed Calliper"},
     {"question": "What tire dimension configuration is standard across both EMPOW GE and GL sedan variants?", "options": ["225/45 Tires on 18\" Rims", "235/55 Tires on 20\" Rims", "215/50 Tires on 17\" Rims", "255/50 Tires on 20\" Rims"], "answer": "225/45 Tires on 18\" Rims"},
-    # GS4 MAX
     {"question": "Which specification variant of the GS4 MAX features upgraded R20 Wheels and Tires?", "options": ["GL", "GL+", "GB", "Luxury+"], "answer": "GL+"},
     {"question": "Do both GL and GL+ variants of the GS4 MAX feature Electric Hidden Door Handles as standard exterior equipment?", "options": ["Yes, both trims", "Only GL+", "Only GL", "Neither trim handles hide"], "answer": "Yes, both trims"},
-    # AION V
     {"question": "What configuration profile characterizes the standalone luxury variant layout of the electric AION V sheet?", "options": ["Luxury+", "Premium Comfort", "Executive AWD", "Standard Elite"], "answer": "Luxury+"}
 ]
 
@@ -75,7 +102,7 @@ st.title("🚘 GAC Showroom Dynamic Training Engine")
 st.subheader("Randomized assessments to master vehicle trims and features")
 st.markdown("---")
 
-# --- SIDEBAR LEADERBOARD (RANKED BY TOTAL CORRECT) ---
+# --- SIDEBAR LEADERBOARD ---
 with st.sidebar:
     st.header("📋 Representative Log In")
     
@@ -84,7 +111,6 @@ with st.sidebar:
         if st.button("Log In & Draw Fresh Quiz 🎲"):
             if name.strip():
                 st.session_state.current_user = name.strip()
-                # Draw 5 totally random questions from the master pool
                 st.session_state.current_quiz_set = random.sample(MASTER_QUESTION_POOL, min(5, len(MASTER_QUESTION_POOL)))
                 st.session_state.quiz_submitted = False
                 st.rerun()
@@ -105,7 +131,6 @@ with st.sidebar:
     st.markdown("---")
     st.header("🏆 Live Showroom Ranking")
     
-    # Pull current data from cloud database
     raw_db = load_global_db()
     if raw_db:
         leaderboard_rows = []
@@ -115,15 +140,14 @@ with st.sidebar:
             accuracy = (correct / attempted * 100) if attempted > 0 else 0
             leaderboard_rows.append({
                 "Sales Executive": user,
-                "Cumulative Correct Answers": correct,
-                "Total Questions Seen": attempted,
-                "Lifetime Accuracy": f"{accuracy:.1f}%"
+                "Cumulative Correct": correct,
+                "Total Questions": attempted,
+                "Accuracy": f"{accuracy:.1f}%"
             })
         
-        # Turn into DataFrame and Sort by highest correct answers (Ranked)
         df_leaderboard = pd.DataFrame(leaderboard_rows)
-        df_leaderboard = df_leaderboard.sort_values(by="Cumulative Correct Answers", ascending=False).reset_index(drop=True)
-        df_leaderboard.index = df_leaderboard.index + 1  # Standardizes rank formatting to start at 1
+        df_leaderboard = df_leaderboard.sort_values(by="Cumulative Correct", ascending=False).reset_index(drop=True)
+        df_leaderboard.index = df_leaderboard.index + 1
         st.table(df_leaderboard)
     else:
         st.info("No recorded stats on the scoreboard yet.")
@@ -151,7 +175,6 @@ else:
                     if user_answers[idx] == q['answer']:
                         correct_count += 1
                 
-                # Push metrics to global cumulative ledger database
                 update_lifetime_score(st.session_state.current_user, correct_count, len(st.session_state.current_quiz_set))
                 st.session_state.session_correct = correct_count
                 st.session_state.quiz_submitted = True
@@ -163,4 +186,4 @@ else:
         if st.button("Start Another Quiz Immediately"):
             st.session_state.current_quiz_set = random.sample(MASTER_QUESTION_POOL, min(5, len(MASTER_QUESTION_POOL)))
             st.session_state.quiz_submitted = False
-            st.rerun()
+            st.rerun()    
