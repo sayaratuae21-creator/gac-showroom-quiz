@@ -9,7 +9,7 @@ st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", 
 
 # --- CUSTOM BACKGROUND IMAGE ---
 # You can replace this link with ANY direct image link you want (e.g., from Imgur, Unsplash, or a GAC website)
-BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1920&q=80"
+BACKGROUND_IMAGE_URL = "https://postimg.cc/PCtT6b1z"
 
 # Inject custom CSS to set the background and style the text cards for readability
 st.markdown(
