@@ -3,13 +3,10 @@ import pandas as pd
 import requests
 import json
 import random
-
 # Set up page config
 st.set_page_config(page_title=" GAC – Product Learning ", layout="wide")
-
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
-
 st.markdown(
     f"""
     <style>
@@ -60,12 +57,10 @@ st.sidebar.markdown(
     """, 
     unsafe_allow_html=True
 )
-
 # --- PERMANENT DATABASE CONFIG (JSONBin.io) ---
 # Paste your credentials here:
 BIN_ID = "6a55d6caf5f4af5e298c1651"
 API_KEY = "$2a$10$vJelScEkNfMQ2fA5Au5OrOgFYlZNy8KCgCBsaStqMSQ1tb4t8zn1y"
-
 # --- COMPREHENSIVE PRODUCT KNOWLEDGE POOL (100+ QUESTIONS) ---
 MASTER_QUESTION_POOL = [
     # --- AION V ---
