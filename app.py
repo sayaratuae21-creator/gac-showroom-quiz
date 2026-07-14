@@ -10,30 +10,57 @@ st.set_page_config(page_title=" GAC – Product Learning ", layout="wide")
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
 
-# Sleek custom styled banner for the Leaderboard title
 st.markdown(
+    f"""
+    <style>
+    [data-testid="stAppViewContainer"] {{
+        background-image: url("{BACKGROUND_IMAGE_URL}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    [data-testid="stHeader"] {{
+        background: rgba(0,0,0,0);
+    }}
+    .block-container {{
+        background-color: rgba(255, 255, 255, 0.45);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        padding: 3rem 3rem !important;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.3);
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        max-width: 1100px !important;
+    }}
+    # Replace your old sidebar ranking title with this custom styled banner:
+st.sidebar.markdown(
     """
     <div style="
         background-color: #0F2942; 
-        padding: 12px 20px; 
-        border-radius: 8px; 
-        margin-bottom: 15px;
-        box-shadow: 1px 1px 5px rgba(0,0,0,0.1);
+        padding: 10px 15px; 
+        border-radius: 6px; 
+        margin-top: 10px;
+        margin-bottom: 12px;
+        text-align: center;
+        box-shadow: 1px 1px 3px rgba(0,0,0,0.15);
     ">
-        <h2 style="
+        <span style="
             color: #FFFFFF; 
             font-weight: 800; 
-            margin: 0; 
-            font-size: 24px;
+            font-size: 16px;
             font-family: 'Source Sans Pro', sans-serif;
             letter-spacing: 0.5px;
         ">
             🏆 Live Showroom Ranking
-        </h2>
+        </span>
     </div>
     """, 
     unsafe_allow_html=True
 )
+
 # --- PERMANENT DATABASE CONFIG (JSONBin.io) ---
 # Paste your credentials here:
 BIN_ID = "6a55d6caf5f4af5e298c1651"
