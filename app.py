@@ -38,11 +38,25 @@ st.markdown(
     [data-testid="stSidebar"] {{
         background-color: rgba(255, 255, 255, 0.88) !important;
     }}
+    
+    /* --- TABLE CUSTOMIZATION FOR CONTRAST & CENTERING --- */
+    /* Force table header text to be dark, bold, and perfectly centered */
+    th {{
+        color: #111111 !important;
+        font-weight: bold !important;
+        text-align: center !important;
+        font-size: 1rem !important;
+    }}
+    /* Force all table cells (including numbers) to center-align and have better contrast */
+    td {{
+        color: #222222 !important;
+        text-align: center !important;
+        font-weight: 500 !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True
 )
-
 # --- PERMANENT DATABASE CONFIG (JSONBin.io) ---
 # Paste your credentials here:
 BIN_ID = "6a55d6caf5f4af5e298c1651"
