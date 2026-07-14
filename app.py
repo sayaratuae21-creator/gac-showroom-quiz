@@ -8,7 +8,7 @@ import random
 st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", layout="wide")
 
 # --- CUSTOM BACKGROUND IMAGE ---
-BACKGROUND_IMAGE_URL = "https://i.postimg.cc/3w3xKGcz/Purple.jpg"
+BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1920&q=80"
 
 st.markdown(
     f"""
@@ -61,6 +61,11 @@ def load_global_db():
 
 def update_lifetime_score(name, score_to_add, total_added):
     db = load_global_db()
+    
+    # Clean out placeholder test accounts if they exist
+    if "test_user" in db:
+        del db["test_user"]
+        
     if name not in db:
         db[name] = {"correct": 0, "attempted": 0}
     
@@ -144,6 +149,8 @@ if "quiz_submitted" not in st.session_state:
     st.session_state.quiz_submitted = False
 if "session_correct" not in st.session_state:
     st.session_state.session_correct = 0
+if "saved_answers" not in st.session_state:
+    st.session_state.saved_answers = {}
 
 def draw_new_quiz_round():
     if len(st.session_state.unanswered_deck) < 5:
@@ -157,6 +164,7 @@ def draw_new_quiz_round():
             
     st.session_state.current_quiz_set = round_questions
     st.session_state.quiz_submitted = False
+    st.session_state.saved_answers = {}
 
 # --- HEADER UI ---
 st.title("🚘 GAC Showroom Dynamic Training Engine")
@@ -191,6 +199,7 @@ with st.sidebar:
             st.session_state.current_quiz_set = []
             st.session_state.unanswered_deck = []
             st.session_state.quiz_submitted = False
+            st.session_state.saved_answers = {}
             st.rerun()
             
     st.markdown("---")
@@ -211,9 +220,15 @@ with st.sidebar:
             })
         
         df_leaderboard = pd.DataFrame(leaderboard_rows)
-        df_leaderboard = df_leaderboard.sort_values(by="Cumulative Correct", ascending=False).reset_index(drop=True)
-        df_leaderboard.index = df_leaderboard.index + 1
-        st.table(df_leaderboard)
+        # Filter out placeholder records if present
+        df_leaderboard = df_leaderboard[df_leaderboard["Sales Executive"] != "test_user"]
+        
+        if not df_leaderboard.empty:
+            df_leaderboard = df_leaderboard.sort_values(by="Cumulative Correct", ascending=False).reset_index(drop=True)
+            df_leaderboard.index = df_leaderboard.index + 1
+            st.table(df_leaderboard)
+        else:
+            st.info("No recorded stats on the scoreboard yet.")
     else:
         st.info("No recorded stats on the scoreboard yet.")
 
@@ -224,6 +239,7 @@ else:
     st.header(f"✏️ 5-Question Adaptive Quiz Round")
     st.caption("Every attempt updates your cumulative showroom record score dynamically. Each question is pulled from a non-repeating deck.")
     
+    # CASE 1: QUIZ IN PROGRESS
     if not st.session_state.quiz_submitted:
         with st.form("dynamic_quiz_form"):
             user_answers = {}
@@ -236,6 +252,9 @@ else:
             
             if submit_round:
                 correct_count = 0
+                # Save their selected answers to display in feedback
+                st.session_state.saved_answers = {idx: user_answers[idx] for idx in range(len(st.session_state.current_quiz_set))}
+                
                 for idx, q in enumerate(st.session_state.current_quiz_set):
                     if user_answers[idx] == q['answer']:
                         correct_count += 1
@@ -244,10 +263,27 @@ else:
                 st.session_state.session_correct = correct_count
                 st.session_state.quiz_submitted = True
                 st.rerun()
+                
+    # CASE 2: RESULTS SUBMITTED (SHOW CORRECTIONS IN RED/GREEN)
     else:
         st.balloons()
         st.success(f"🎯 **Round Complete!** You scored **{st.session_state.session_correct} / {len(st.session_state.current_quiz_set)}** on this random draw.")
-        st.info("Your points have been added to your lifetime profile record. Check the live scoreboard on the left sidebar to see your current ranking position across the team!")
+        st.markdown("### 🔍 Answer Review & Instant Training Feedback:")
+        
+        for idx, q in enumerate(st.session_state.current_quiz_set):
+            user_ans = st.session_state.saved_answers.get(idx)
+            correct_ans = q['answer']
+            is_correct = (user_ans == correct_ans)
+            
+            st.markdown(f"**Q{idx+1}: {q['question']}**")
+            
+            if is_correct:
+                st.success(f"🟢 **Correct!** You selected: **{user_ans}**")
+            else:
+                st.error(f"🔴 **Incorrect.** You selected: **{user_ans}**  \n👉 **Correct Answer:** **{correct_ans}**")
+            st.markdown("---")
+            
+        st.info("Your points have been added to your lifetime profile record. Check the live scoreboard on the left sidebar to see your current ranking position!")
         if st.button("Start Another Quiz Immediately"):
             draw_new_quiz_round()
             st.rerun()
