@@ -3,10 +3,13 @@ import pandas as pd
 import requests
 import json
 import random
+
 # Set up page config
 st.set_page_config(page_title=" GAC – Product Learning ", layout="wide")
+
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
+
 st.markdown(
     f"""
     <style>
@@ -32,31 +35,29 @@ st.markdown(
         margin-bottom: 2rem;
         max-width: 1100px !important;
     }}
-    # Replace your old sidebar ranking title with this custom styled banner:
-st.sidebar.markdown(
-    """
-    <div style=
-        background-color: #0F2942; 
-        padding: 10px 15px; 
-        border-radius: 6px; 
-        margin-top: 10px;
-        margin-bottom: 12px;
-        text-align: center;
-        box-shadow: 1px 1px 3px rgba(0,0,0,0.15);
-    ">
-        <span style="
-            color: #FFFFFF; 
-            font-weight: 800; 
-            font-size: 16px;
-            font-family: 'Source Sans Pro', sans-serif;
-            letter-spacing: 0.5px;
-        ">
-            🏆 Live Showroom Ranking
-        </span>
-    </div>
-    """, 
+    [data-testid="stSidebar"] {{
+        background-color: rgba(255, 255, 255, 0.88) !important;
+    }}
+    
+    /* --- TABLE CUSTOMIZATION FOR CONTRAST & CENTERING --- */
+    /* Force table header text to be dark, bold, and perfectly centered */
+    th {{
+        color: #111111 !important;
+        font-weight: bold !important;
+        text-align: center !important;
+        font-size: 1rem !important;
+    }}
+    /* Force all table cells (including numbers) to center-align and have better contrast */
+    td {{
+        color: #222222 !important;
+        text-align: center !important;
+        font-weight: 500 !important;
+    }}
+    </style>
+    """,
     unsafe_allow_html=True
 )
+
 # --- PERMANENT DATABASE CONFIG (JSONBin.io) ---
 # Paste your credentials here:
 BIN_ID = "6a55d6caf5f4af5e298c1651"
