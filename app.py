@@ -29,21 +29,28 @@ st.markdown(
         background: rgba(0,0,0,0);
     }}
     
-    /* Create a beautiful semi-transparent card for the main content so text is highly readable */
+    /* Elegant frosted-glass card so the background car is beautifully visible */
     .block-container {{
-        background-color: rgba(255, 255, 255, 0.95);
+        background-color: rgba(255, 255, 255, 0.4); /* High transparency */
+        backdrop-filter: blur(10px); /* Frosted glass effect */
+        -webkit-backdrop-filter: blur(10px);
         padding: 3rem 3rem !important;
-        border-radius: 15px;
-        box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.25); /* Shiny border */
+        box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.3);
         margin-top: 2rem;
         margin-bottom: 2rem;
         max-width: 1100px !important;
+    }}
+    
+    /* Style the sidebar to match the glass style */
+    [data-testid="stSidebar"] {{
+        background-color: rgba(255, 255, 255, 0.85) !important;
     }}
     </style>
     """,
     unsafe_allow_html=True
 )
-
 # --- GLOBAL DATABASE CONFIG ---
 DB_URL = "https://kvdb.io/MN87X9WvSgWj8U3n8v5X9f/gac_rak_showroom_cumulative_leaderboard"
 
