@@ -3,13 +3,10 @@ import pandas as pd
 import requests
 import json
 import random
-
 # Set up page config
 st.set_page_config(page_title=" GAC – Product Learning ", layout="wide")
-
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
-
 st.markdown(
     f"""
     <style>
