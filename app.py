@@ -38,7 +38,7 @@ st.markdown(
     # Replace your old sidebar ranking title with this custom styled banner:
 st.sidebar.markdown(
     """
-    <div style="
+    <div style=
         background-color: #0F2942; 
         padding: 10px 15px; 
         border-radius: 6px; 
