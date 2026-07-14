@@ -8,7 +8,7 @@ import random
 st.set_page_config(page_title="GAC RAK - Sales Product Competency Leaderboard", layout="wide")
 
 # --- CUSTOM BACKGROUND IMAGE ---
-BACKGROUND_IMAGE_URL = "https://i.postimg.cc/bwcXPj5P/GS.jpg"
+BACKGROUND_IMAGE_URL = "https://i.postimg.cc/3w3xKGcz/Purple.jpg"
 
 st.markdown(
     f"""
