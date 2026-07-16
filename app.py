@@ -6,7 +6,42 @@ import random
 
 # Set up page config
 st.set_page_config(page_title=" GAC – Product Learning ", layout="wide")
+# --- CUSTOM SIDEBAR & INPUT BOX STYLING ---
+st.markdown(
+    """
+    <style>
+    /* 1. Style the text input field in the sidebar (Make it highly visible light-gray) */
+    [data-testid="stSidebar"] .stTextInput input {
+        background-color: #EAECEF !important;     /* Distinct light gray background */
+        color: #111111 !important;                /* Dark, highly readable text */
+        border: 1.5px solid #A0AAB2 !important;   /* Solid border to define the box */
+        border-radius: 6px !important;            /* Clean rounded corners */
+        padding: 8px 12px !important;
+    }
+    
+    /* Highlight the box with a GAC Blue outline when clicked/focused */
+    [data-testid="stSidebar"] .stTextInput input:focus {
+        border-color: #0F2942 !important;
+        box-shadow: 0 0 0 0.2rem rgba(15, 41, 66, 0.2) !important;
+        background-color: #EAECEF !important;
+    }
 
+    /* 2. Style the table headers in the sidebar ranking */
+    [data-testid="stSidebar"] table th {
+        background-color: #0F2942 !important;     /* Deep Premium GAC Blue header */
+        color: #FFFFFF !important;                /* Bold white text */
+        font-weight: bold !important;
+        text-align: center !important;
+    }
+    
+    /* Center align the rankings data inside the table cells */
+    [data-testid="stSidebar"] table td {
+        text-align: center !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
 
