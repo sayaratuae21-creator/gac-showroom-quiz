@@ -136,13 +136,12 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     try:
         xls = pd.ExcelFile(filepath)
         for sheet in xls.sheet_names:
-            # Skip empty or irrelevant sheets if any
             df = pd.read_excel(filepath, sheet_name=sheet, skiprows=1)
             
             # Standardize columns: Col 0: Category Group, Col 1: Feature Name, Col 2+: Trims
             df.rename(columns={df.columns[0]: 'Category_Group', df.columns[1]: 'Feature'}, inplace=True)
             
-            # Find the dynamic trim columns (e.g. 1.5T GL, 2.0T GT)
+            # Find the dynamic trim columns (e.g. GB (Entry), GS (Mid), GL (Top))
             trim_cols = [c for c in df.columns if c not in ['Category_Group', 'Feature'] and not str(c).startswith('Unnamed')]
             
             for _, row in df.iterrows():
@@ -150,32 +149,75 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 if pd.isna(feature) or str(feature).strip() == "" or str(feature).startswith('MAIN TECHNICAL'):
                     continue
                 
+                feature_str = str(feature).strip()
+                
+                # Skip any rows where the feature itself got parsed as a dot symbol or dash
+                if feature_str in ['●', '○', '■', '-', '•']:
+                    continue
+                
                 # Create a question for each available trim configuration
                 for trim in trim_cols:
-                    correct_val = str(row[trim]).strip()
-                    if pd.isna(row[trim]) or correct_val.lower() in ['nan', '-', '']:
-                        continue
+                    # Get the raw value and convert to string, treating NaN as empty string
+                    val_check = row[trim]
+                    raw_val = str(val_check).strip() if pd.notna(val_check) else ""
+                    
+                    # --- NEW AVAILABILITY TRANSLATION SYSTEM ---
+                    # If empty, dash, or explicitly 'nan'/'no', it is "Not Available"
+                    if raw_val == "" or raw_val.lower() in ['nan', '-', 'no', 'n/a']:
+                        correct_val = "Not Available"
+                    # If it has a dot or 'yes', it is "Standard"
+                    elif raw_val in ['●', '•', 'yes', 'Yes']:
+                        correct_val = "Standard"
+                    # Otherwise, use the actual technical spec value (e.g., "177 hp", "2730 mm")
+                    else:
+                        correct_val = raw_val
                     
                     # Construct clear multiple-choice question
-                    q_text = f"For the GAC {sheet.strip()} ({trim.strip()}), what is the exact specification/configuration for '{feature.strip()}'?"
-                    category = map_to_category(feature)
+                    q_text = f"For the GAC {sheet.strip()} ({trim.strip()}), what is the configuration for '{feature_str}'?"
+                    category = map_to_category(feature_str)
                     
-                    # Create smart wrong answers (distractors) using other values from the same row
+                    # Create smart wrong answers (distractors)
                     wrong_choices = set()
-                    sibling_vals = [str(x).strip() for x in row[trim_cols].values if not pd.isna(x) and str(x).strip() not in ['nan', '-', '', correct_val]]
                     
-                    for val in sibling_vals:
-                        wrong_choices.add(val)
+                    # If the answer is Standard or Not Available, show standard choices
+                    if correct_val in ["Standard", "Not Available"]:
+                        wrong_choices.add("Standard" if correct_val == "Not Available" else "Not Available")
+                        wrong_choices.add("Optional Feature")
+                        wrong_choices.add("Premium Trim Only")
+                    else:
+                        # Otherwise, pull values from other trims in the same row as logical distractors
+                        for tc in trim_cols:
+                            sib_val = row[tc]
+                            sib_raw = str(sib_val).strip() if pd.notna(sib_val) else ""
+                            
+                            if sib_raw.lower() not in ['nan', '', raw_val.lower()]:
+                                if sib_raw in ['●', '•', 'yes', 'Yes']:
+                                    wrong_choices.add("Standard")
+                                elif sib_raw == "" or sib_raw.lower() in ['nan', '-', 'no', 'n/a']:
+                                    wrong_choices.add("Not Available")
+                                else:
+                                    wrong_choices.add(sib_raw)
+                        
+                        # Add generic backup options if we don't have enough options
+                        decoys = ["Not Available", "Standard Feature", "Optional Feature", "N/A"]
+                        for decoy in decoys:
+                            if decoy != correct_val:
+                                wrong_choices.add(decoy)
                     
-                    # Fallback decoy choices if there aren't enough unique sibling values
-                    decoys = ["Not Available", "Standard Feature", "Optional Feature", "Premium Package Only", "N/A"]
-                    while len(wrong_choices) < 3:
-                        decoy = random.choice(decoys)
-                        if decoy != correct_val:
-                            wrong_choices.add(decoy)
-                    
-                    # Format standard option choices
+                    # Format final option choices (Limit to 4 total)
                     options = [correct_val] + list(wrong_choices)[:3]
+                    
+                    # Final safety check: remove any leftover raw dot or dash symbols from options list
+                    options = [o for o in options if o not in ['●', '•', '-', 'nan', 'NaN']]
+                    
+                    # Ensure we always have exactly 4 choices
+                    if len(options) < 4:
+                        for opt in ["Standard", "Not Available", "Optional Feature", "Premium Trim Only"]:
+                            if opt not in options:
+                                options.append(opt)
+                            if len(options) == 4:
+                                break
+                    
                     random.shuffle(options)
                     
                     generated_pool.append({
@@ -188,11 +230,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     question_id_counter += 1
                     
     except Exception as e:
-        # Fallback empty list to prevent crashes if file read fails
         return []
 
     return generated_pool
-
 # Load the dynamic pool into memory
 MASTER_QUESTION_POOL = load_questions_from_excel()
 # --- DATABASE LOAD / SAVE FUNCTIONS ---
