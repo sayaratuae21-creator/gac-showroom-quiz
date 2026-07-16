@@ -136,12 +136,18 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     try:
         xls = pd.ExcelFile(filepath)
         for sheet in xls.sheet_names:
-            # 1. Read the sheet raw first to find where the header starts
-            df_raw = pd.read_excel(filepath, sheet_name=sheet)
+            # 1. Read sheet raw (without headers) to find the true header row
+            df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
             
             header_row_idx = 0
             for idx, row in df_raw.iterrows():
-                row_vals = [str(v).lower() for v in row.values]
+                row_vals = [str(v).strip().lower() for v in row.values if pd.notna(v)]
+                
+                # A true header row must have at least 2 non-empty values (skips the title rows)
+                non_empty_count = sum(1 for v in row_vals if v != "")
+                if non_empty_count <= 1:
+                    continue
+                
                 if any('feature' in r or 'specification' in r for r in row_vals):
                     header_row_idx = idx
                     break
@@ -149,7 +155,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             # 2. Load starting from the actual header row
             df = pd.read_excel(filepath, sheet_name=sheet, skiprows=header_row_idx)
             
-            # 3. Explicitly find the 'Feature & Specification' column BEFORE renaming anything
+            # 3. Explicitly find the 'Feature & Specification' column
             feat_col = None
             for col in df.columns:
                 if 'feature' in str(col).lower() or 'specification' in str(col).lower():
@@ -159,11 +165,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             if not feat_col:
                 feat_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
             
-            # 4. Standardize the columns
-            # Column 0 is the category group (e.g. "MAIN TECHNICAL SPECIFICATIONS")
+            # 4. Identify Category and Trim Columns
             cat_col = df.columns[0]
-            
-            # Trim columns are everything else on the right (excluding category and the feature name itself)
             trim_cols = [c for c in df.columns if c != feat_col and c != cat_col and not str(c).startswith('Unnamed')]
             
             for _, row in df.iterrows():
@@ -173,7 +176,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 
                 feature_str = str(feature).strip()
                 
-                # Double safety: check that we aren't using a symbol as a feature name
+                # Double safety: skip plain symbols as feature names
                 if feature_str in ['●', '○', '■', '-', '•', 'nan', 'NaN']:
                     continue
                 
@@ -187,7 +190,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     elif raw_val in ['●', '•', 'yes', 'Yes']:
                         correct_val = "Standard"
                     else:
-                        correct_val = raw_val  # Keeps values like "McPherson Independent"
+                        correct_val = raw_val
                     
                     # Clean phrasing for the team
                     q_text = f"For the GAC {sheet.strip()} ({trim.strip()}), what is the feature details for '{feature_str}'?"
@@ -243,7 +246,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     question_id_counter += 1
                     
     except Exception as e:
-        # Returning empty list if it breaks to avoid crashing the whole screen
         return []
 
     return generated_pool
