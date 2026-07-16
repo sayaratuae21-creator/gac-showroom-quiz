@@ -136,41 +136,59 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     try:
         xls = pd.ExcelFile(filepath)
         for sheet in xls.sheet_names:
-            df = pd.read_excel(filepath, sheet_name=sheet, skiprows=1)
+            # Read sheet without skipping rows first to map accurately
+            df_raw = pd.read_excel(filepath, sheet_name=sheet)
             
-            # Standardize columns: Col 0: Category Group, Col 1: Feature Name, Col 2+: Trims
-            df.rename(columns={df.columns[0]: 'Category_Group', df.columns[1]: 'Feature'}, inplace=True)
+            # Find the actual row index where 'Feature & Specification' is written
+            header_row_idx = 0
+            for idx, row in df_raw.iterrows():
+                row_vals = [str(v).lower() for v in row.values]
+                if any('feature' in r or 'specification' in r for r in row_vals):
+                    header_row_idx = idx
+                    break
             
-            # Find the dynamic trim columns (e.g. GB (Entry), GS (Mid), GL (Top))
-            trim_cols = [c for c in df.columns if c not in ['Category_Group', 'Feature'] and not str(c).startswith('Unnamed')]
+            # Reload sheet properly starting at the true header row
+            df = pd.read_excel(filepath, sheet_name=sheet, skiprows=header_row_idx)
+            
+            # Dynamically identify the main feature column
+            feat_col = None
+            for col in df.columns:
+                if 'feature' in str(col).lower() or 'specification' in str(col).lower():
+                    feat_col = col
+                    break
+            
+            if not feat_col:
+                # Fallback if names are completely shifted
+                feat_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+            
+            # Trim columns are everything else except the category group (Col 0) and the Feature Column
+            trim_cols = [c for c in df.columns if c != feat_col and c != df.columns[0] and not str(c).startswith('Unnamed')]
             
             for _, row in df.iterrows():
-                feature = row.get('Feature')
+                feature = row.get(feat_col)
                 if pd.isna(feature) or str(feature).strip() == "" or str(feature).startswith('MAIN TECHNICAL'):
                     continue
                 
-                # The question MUST ask about the feature name!
                 feature_str = str(feature).strip()
                 
-                # Skip any rows where the feature name itself accidentally parsed as a symbol
-                if feature_str in ['●', '○', '■', '-', '•']:
+                # Double safety: check that we aren't using a symbol as a feature name
+                if feature_str in ['●', '○', '■', '-', '•', 'nan', 'NaN']:
                     continue
                 
-                # Create a question for each trim level
                 for trim in trim_cols:
                     val_check = row[trim]
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     
-                    # --- TRANSLATE VALUE (THE ANSWER) ---
+                    # --- TRANSLATE VALUE INTO PROFESSIONAL ANSWERS ---
                     if raw_val == "" or raw_val.lower() in ['nan', '-', 'no', 'n/a']:
                         correct_val = "Not Available"
                     elif raw_val in ['●', '•', 'yes', 'Yes']:
                         correct_val = "Standard"
                     else:
-                        correct_val = raw_val  # e.g., "14.6-inch HD LCD Touch Screen" or "5 Passengers (Including Driver)"
+                        correct_val = raw_val  # Keeps the exact value like "McPherson Independent"
                     
-                    # Clean the feature name in the question to avoid repeating details
-                    q_text = f"For the GAC {sheet.strip()} ({trim.strip()}), what is the specification for '{feature_str}'?"
+                    # Clean phrasing for the team
+                    q_text = f"For the GAC {sheet.strip()} ({trim.strip()}), what is the feature details for '{feature_str}'?"
                     category = map_to_category(feature_str)
                     
                     # Create logical wrong answers (distractors)
@@ -181,7 +199,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         wrong_choices.add("Optional Feature")
                         wrong_choices.add("Premium Package Only")
                     else:
-                        # Grab other values from matching trims to act as realistic distractors
+                        # Pull alternative values from adjacent trims to create realistic wrong choices
                         for tc in trim_cols:
                             sib_val = row[tc]
                             sib_raw = str(sib_val).strip() if pd.notna(sib_val) else ""
@@ -194,19 +212,16 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 else:
                                     wrong_choices.add(sib_raw)
                         
-                        # Add general technical decoys if we need more options
-                        decoys = ["Not Available", "Standard", "Optional Feature", "N/A"]
+                        # Add generic technical options to fill up choices
+                        decoys = ["Not Available", "Standard", "Optional Feature", "Premium Variant Only"]
                         for decoy in decoys:
                             if decoy.lower() != correct_val.lower():
                                 wrong_choices.add(decoy)
                     
-                    # Format final option choices (Limit to 4 total)
+                    # Merge, clean, and shuffle options
                     options = [correct_val] + list(wrong_choices)[:3]
-                    
-                    # Ensure symbols don't slip into the options
                     options = [o for o in options if o not in ['●', '•', '-', 'nan', 'NaN']]
                     
-                    # Final security check to ensure we have exactly 4 choices
                     if len(options) < 4:
                         for opt in ["Standard", "Not Available", "Optional Feature", "Premium Package Only"]:
                             if opt not in options:
