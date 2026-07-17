@@ -119,7 +119,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     question_id_counter = 1
     
     # ----------------- TIGHT SEMANTIC SUB-GROUPS & TOUGH DECOYS -----------------
-    # This prevents cross-contamination (e.g., seat ventilation showing up under seat trim)
     SEMANTIC_GROUPS = {
         "anti_theft": {
             "keywords": ["theft", "immobilizer", "alarm", "security", "burglar"],
@@ -177,6 +176,32 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     def extract_only_digits(val_str):
         return "".join(re.findall(r'\d+', str(val_str)))
+
+    # ----------------- ADVANCED CONTEXTUAL GUARD -----------------
+    # Prevents format-mismatching (e.g. comparing "km/h" with "Passengers" or "DCT")
+    def is_contextually_compatible(feature_name, correct_val, decoy_val):
+        f_lower = str(feature_name).lower()
+        c_lower = str(correct_val).lower()
+        d_lower = str(decoy_val).lower()
+        
+        # 1. Max Speed (km/h) Guard: Decoys must be pure numbers, or contain speed terms, and NOT contain gearbox terms.
+        if "max speed" in f_lower or "km/h" in f_lower or "top speed" in f_lower:
+            has_digit = any(char.isdigit() for char in d_lower)
+            has_gearbox = any(tx in d_lower for tx in ["at", "dct", "cvt", "manual", "reducer", "clutch", "speed wet", "speed automatic"])
+            has_passengers = "passenger" in d_lower or "seat" in d_lower
+            return has_digit and not has_gearbox and not has_passengers
+            
+        # 2. Screen / Dashboard / Display Guard: Decoys must be screen descriptions (inch, LCD, display, TFT, screen, cluster)
+        if any(k in f_lower for k in ["dashboard", "screen", "display", "instrument", "cluster", "touchscreen", "lcd", "meter"]):
+            is_screen = any(k in d_lower for k in ["inch", "lcd", "display", "screen", "tft", "instrument", "cluster", "color", "meter"])
+            is_unrelated = any(k in d_lower for k in ["pm 2.5", "sensor", "airbag", "seat", "wheel", "camera"])
+            return is_screen and not is_unrelated
+
+        # 3. Seating Capacity Guard: Decoys must contain seating/passenger capacity numbers
+        if "capacity" in f_lower or "passenger" in f_lower or "seating" in f_lower:
+            return any(k in d_lower for k in ["passenger", "seat", "person"]) or (d_lower.isdigit() and len(d_lower) == 1)
+
+        return True
 
     def map_to_category(feature_name):
         f_lower = str(feature_name).lower()
@@ -314,26 +339,21 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         raw_wrong_choices = set()
                         
                         # STEP 1: Strict Semantic Subgroup Isolation
-                        # If the feature has a tight semantic subgroup, ONLY pull wrong choices from that subgroup!
                         if subgroup:
-                            # Pull from other models with the same semantic subgroup
                             for g_val in global_semantic_values[subgroup]:
                                 raw_wrong_choices.add(g_val)
-                            # Pull from the hand-crafted semantic decoy database
                             for db_decoy in SEMANTIC_GROUPS[subgroup]["decoys"]:
                                 raw_wrong_choices.add(db_decoy)
                         else:
-                            # General feature fallback if no precise subgroup matches
                             if feat_key in global_feature_values:
                                 for g_val in global_feature_values[feat_key]:
                                     raw_wrong_choices.add(g_val)
                             
-                            # Standard category fallback
                             if len(raw_wrong_choices) < 5 and category in global_category_values:
                                 for cat_val in global_category_values[category]:
                                     raw_wrong_choices.add(cat_val)
 
-                        # Clean, deduplicate, and enforce format-matching
+                        # Clean, deduplicate, and enforce format & contextual-matching
                         selected_wrongs = []
                         for raw_w in raw_wrong_choices:
                             w_base = get_base_specification(raw_w)
@@ -344,12 +364,16 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             if w_digits and w_digits in seen_digit_sequences:
                                 continue
                                 
-                            # Format matching check
+                            # 1. Broad Format matching check (numbers vs text)
                             w_has_digits = any(c.isdigit() for c in w_base)
                             if correct_has_digits != w_has_digits:
                                 continue  
                                 
-                            # Substring overlap checker
+                            # 2. STRICT CONTEXTUAL GUARD (Prevents cross-contamination of units/concepts)
+                            if not is_contextually_compatible(feature_str, correct_base, w_base):
+                                continue
+                                
+                            # 3. Substring overlap checker
                             overlapping = False
                             for seen in seen_simplified_texts:
                                 if w_base.lower() in seen or seen in w_base.lower():
@@ -366,17 +390,33 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         # Select top 3 cleanest distractors
                         final_wrongs = selected_wrongs[:3]
                         
-                        # Ensure "Not Available" acts as a fallback decoy if appropriate (and format matches)
-                        if len(final_wrongs) < 3 and correct_base != "Not Available" and "not available" not in seen_simplified_texts:
-                            if not correct_has_digits: 
-                                final_wrongs.append("Not Available")
-                            
-                        # Combine clean correct answer with clean wrong answers
-                        options = [correct_base] + final_wrongs
+                        # If we have too few options because of strict filtering, generate targeted context fallbacks
+                        while len(final_wrongs) < 3:
+                            if "max speed" in feature_str.lower() or "km/h" in feature_str.lower():
+                                fallback_speeds = ["160", "175", "190", "200", "210"]
+                                random.shuffle(fallback_speeds)
+                                for f_spd in fallback_speeds:
+                                    if f_spd not in seen_simplified_texts:
+                                        final_wrongs.append(f_spd)
+                                        seen_simplified_texts.add(f_spd)
+                                        break
+                            elif any(k in feature_str.lower() for k in ["dashboard", "screen", "display", "instrument"]):
+                                fallback_screens = ["7-inch LCD Instrument", "12.3-inch Full Color Display", "14.6-inch Touchscreen", "8-inch Digital Cluster"]
+                                random.shuffle(fallback_screens)
+                                for f_scr in fallback_screens:
+                                    if f_scr.lower() not in seen_simplified_texts:
+                                        final_wrongs.append(f_scr)
+                                        seen_simplified_texts.add(f_scr.lower())
+                                        break
+                            else:
+                                if not correct_has_digits and "not available" not in seen_simplified_texts:
+                                    final_wrongs.append("Not Available")
+                                    seen_simplified_texts.add("not available")
+                                else:
+                                    final_wrongs.append(f"Alternative Spec {len(final_wrongs) + 1}")
                         
-                        # Ultimate fallback to keep options count at exactly 4
-                        while len(options) < 4:
-                            options.append(f"Alternative Spec {len(options)}")
+                        # Combine clean correct answer with clean wrong answers
+                        options = [correct_base] + final_wrongs[:3]
                     
                     # Shuffle options
                     random.shuffle(options)
