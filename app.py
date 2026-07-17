@@ -110,11 +110,27 @@ import copy
 # This function automatically reads your uploaded "GIMINI SPECS.xlsx"
 # and builds a comprehensive question pool for all vehicle models.
 # ==========================================================
+import random
+import pandas as pd
+
 def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     generated_pool = []
     question_id_counter = 1
     
-    # Organize questions into your standard 8 categories
+    # ----------------- SMART AUTOMOTIVE DATABASE FOR TOUGH DISTRACTORS -----------------
+    # This database automatically steps in when a technical feature is unique to one model
+    smart_database = {
+        "battery": ["Ternary Lithium (NMC)", "Solid-State Battery", "Sodium-Ion Battery", "Lithium-Titanate (LTO)", "Nickel-Metal Hydride (NiMH)"],
+        "transmission": ["7-Speed Wet DCT", "AISIN 8-Speed AT", "Electronically Controlled CVT (E-CVT)", "6-Speed Manual", "Single-Speed Reducer"],
+        "suspension": ["MacPherson Strut / Multi-link", "Double Wishbone / Multi-link", "Torsion Beam Rear Suspension", "Independent Multi-Link Beam"],
+        "engine": ["1.5L Turbocharged (TGDI)", "2.0L Turbocharged (TG)", "1.5L Naturally Aspirated", "2.0L Atkinson Cycle Hybrid"],
+        "speaker": ["8 Speakers", "11 Speakers", "22 Speakers with Dolby Atmos", "6 Speakers", "Sony Premium Audio (11 Speakers)"],
+        "wheel": ["18-inch Alloy Wheels", "19-inch Alloy Wheels", "20-inch Sport Alloy Wheels", "21-inch Multi-Spoke Wheels"],
+        "airbag": ["Dual Front Airbags", "6 Airbags (Front, Side & Curtain)", "7 Airbags (including Driver Knee Airbag)", "8 Airbags"],
+        "screen": ["14.6-inch HD Touchscreen", "10.1-inch Floating Screen", "8-inch Display Audio", "15.6-inch 2K OLED Display"],
+        "roof": ["Panoramic Glass Roof with Electric Sunshade", "Panoramic Sunroof", "Standard Tilting Sunroof", "Carbon Fiber Roof"]
+    }
+
     def map_to_category(feature_name):
         f_lower = str(feature_name).lower()
         if any(k in f_lower for k in ["length", "width", "height", "wheelbase", "capacity", "weight", "tank", "cargo", "volume"]):
@@ -135,8 +151,15 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     try:
         xls = pd.ExcelFile(filepath)
+        
+        # Phase 1: Build a global pool of real values for every single feature across all sheets (models)
+        global_feature_values = {}  # Format: {"feature name lowercase": set([value1, value2, value3])}
+        global_category_values = {}  # Format: {"Category Name": set([value1, value2])}
+        
+        # Temporary parsing structure to read sheet details
+        parsed_sheets = []
+        
         for sheet in xls.sheet_names:
-            # 1. Read sheet raw (without headers) to find the true header row
             df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
             
             header_row_idx = 0
@@ -149,22 +172,55 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     header_row_idx = idx
                     break
             
-            # 2. Load starting from the actual header row
             df = pd.read_excel(filepath, sheet_name=sheet, skiprows=header_row_idx)
             
-            # 3. Find the 'Feature & Specification' column
             feat_col = None
             for col in df.columns:
                 if 'feature' in str(col).lower() or 'specification' in str(col).lower():
                     feat_col = col
                     break
-            
             if not feat_col:
                 feat_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-            
-            # 4. Identify Category and Trim Columns
+                
             cat_col = df.columns[0]
             trim_cols = [c for c in df.columns if c != feat_col and c != cat_col and not str(c).startswith('Unnamed')]
+            
+            parsed_sheets.append({
+                "sheet_name": sheet,
+                "df": df,
+                "feat_col": feat_col,
+                "trim_cols": trim_cols
+            })
+            
+            # Map values globally
+            for _, row in df.iterrows():
+                feature = row.get(feat_col)
+                if pd.isna(feature) or str(feature).strip() == "" or str(feature).startswith('MAIN TECHNICAL'):
+                    continue
+                
+                feat_name = str(feature).strip()
+                feat_key = feat_name.lower()
+                cat_name = map_to_category(feat_name)
+                
+                if feat_key not in global_feature_values:
+                    global_feature_values[feat_key] = set()
+                if cat_name not in global_category_values:
+                    global_category_values[cat_name] = set()
+                    
+                for trim in trim_cols:
+                    val = row[trim]
+                    if pd.notna(val):
+                        val_str = str(val).strip()
+                        if val_str not in ['●', '○', '■', '-', '•', 'nan', 'NaN', '']:
+                            global_feature_values[feat_key].add(val_str)
+                            global_category_values[cat_name].add(val_str)
+
+        # Phase 2: Generate highly competitive questions using global pools
+        for p in parsed_sheets:
+            sheet_name = p["sheet_name"]
+            df = p["df"]
+            feat_col = p["feat_col"]
+            trim_cols = p["trim_cols"]
             
             for _, row in df.iterrows():
                 feature = row.get(feat_col)
@@ -172,71 +228,75 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     continue
                 
                 feature_str = str(feature).strip()
-                if feature_str in ['●', '○', '■', '-', '•', 'nan', 'NaN']:
-                    continue
+                feat_key = feature_str.lower()
+                category = map_to_category(feature_str)
                 
-                # Check if this feature is a Yes/No feature or a text/numerical spec
-                # Yes/No features are typically filled with markers like ●, yes, standard, or are blank.
+                # Check if it is a Yes/No (Binary) feature
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
                 is_binary_feature = all(v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'not available', 'n/a', ''] for v in all_trim_values)
-                
-                category = map_to_category(feature_str)
                 
                 for trim in trim_cols:
                     val_check = row[trim]
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     
-                    # Determine Correct Answer based on type
                     if is_binary_feature:
                         if raw_val in ['●', '•', 'yes', 'Yes', 'Standard']:
                             correct_val = "Yes, Standard"
                         else:
                             correct_val = "Not Available"
-                    else:
-                        if raw_val == "" or raw_val.lower() in ['nan', '-', 'no', 'n/a']:
-                            correct_val = "Not Available"
-                        else:
-                            correct_val = raw_val
-                    
-                    # Generate natural, human-like questions
-                    model_name = sheet.strip()
-                    trim_name = trim.strip()
-                    
-                    if is_binary_feature:
-                        # Human style: Is the Power Tailgate standard on the GS8 Desert Raider?
-                        q_text = f"Is the '{feature_str}' feature available as standard on the GAC {model_name} ({trim_name})?"
-                        options = ["Yes, Standard", "Not Available", "Optional Feature", "Available in Premium Packages Only"]
-                    else:
-                        # Human style: What is the Max. Torque for the GS8 Desert Raider?
-                        q_text = f"What is the '{feature_str}' for the GAC {model_name} ({trim_name})?"
-                        
-                        # Find other values in the same row from other trims to use as logical wrong answers
-                        wrong_choices = set()
-                        for other_trim in trim_cols:
-                            other_val = str(row[other_trim]).strip() if pd.notna(row[other_trim]) else ""
-                            if other_val != "" and other_val.lower() not in ['nan', '-', 'no', 'n/a', raw_val.lower()]:
-                                wrong_choices.add(other_val)
-                        
-                        # Filter out symbols from options
-                        wrong_choices = {w for w in wrong_choices if w not in ['●', '•', '-', 'nan', 'NaN']}
-                        
-                        # Add a clean "Not Available" if applicable, otherwise generate realistic values
-                        if correct_val != "Not Available":
-                            wrong_choices.add("Not Available")
                             
-                        options = [correct_val] + list(wrong_choices)[:3]
+                        q_text = f"Is the '{feature_str}' feature available as standard on the GAC {sheet_name.strip()} ({trim.strip()})?"
+                        options = ["Yes, Standard", "Not Available", "Optional Feature", "Available in Premium Packages Only"]
                         
-                        # Fallback options just in case we don't have enough logical choices
-                        fallbacks = ["Not Applicable", "Standard Package", "Custom Order Only"]
-                        for fb in fallbacks:
-                            if len(options) < 4 and fb != correct_val:
-                                options.append(fb)
+                    else:
+                        # Technical Specification value!
+                        correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
+                        q_text = f"What is the '{feature_str}' for the GAC {sheet_name.strip()} ({trim.strip()})?"
+                        
+                        # Gather actual, logical wrong answers (decoys)
+                        wrong_choices = set()
+                        
+                        # 1. Grab values from the same feature name globally (other models)
+                        if feat_key in global_feature_values:
+                            for g_val in global_feature_values[feat_key]:
+                                if g_val.lower() != correct_val.lower() and g_val.lower() not in ['nan', '-', 'no', 'n/a']:
+                                    wrong_choices.add(g_val)
+                                    
+                        # 2. If we need more decoys, inject smart predefined automotive specs
+                        if len(wrong_choices) < 3:
+                            for db_key, db_decoys in smart_database.items():
+                                if db_key in feat_key:
+                                    for db_d in db_decoys:
+                                        if db_d.lower() != correct_val.lower():
+                                            wrong_choices.add(db_d)
+                                            
+                        # 3. If we STILL don't have enough, grab other specifications from the exact same Category
+                        if len(wrong_choices) < 3 and category in global_category_values:
+                            for cat_val in global_category_values[category]:
+                                if cat_val.lower() != correct_val.lower() and cat_val.lower() not in ['nan', '-', 'no', 'n/a']:
+                                    wrong_choices.add(cat_val)
+                                    if len(wrong_choices) >= 5:
+                                        break
+                        
+                        # Prepare the final option list (1 correct + 3 wrong)
+                        selected_wrongs = list(wrong_choices)[:3]
+                        
+                        # Always include "Not Available" as a potential distractor if it is not the correct answer
+                        if len(selected_wrongs) < 3 and correct_val != "Not Available":
+                            selected_wrongs.append("Not Available")
+                            
+                        options = [correct_val] + selected_wrongs
+                        
+                        # Ultimate fallback just in case
+                        while len(options) < 4:
+                            fallback_val = f"Alternative Specification {len(options)}"
+                            options.append(fallback_val)
                     
-                    # Shuffle to mix up the choices
+                    # Shuffle options
                     random.shuffle(options)
                     
                     generated_pool.append({
-                        "id": f"auto_{sheet.strip().lower().replace(' ', '_')}_{question_id_counter}",
+                        "id": f"auto_{sheet_name.strip().lower().replace(' ', '_')}_{question_id_counter}",
                         "category": category,
                         "question": q_text,
                         "options": options,
