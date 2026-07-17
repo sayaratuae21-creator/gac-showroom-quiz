@@ -118,18 +118,54 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     generated_pool = []
     question_id_counter = 1
     
-    # ----------------- SMART AUTOMOTIVE DATABASE FOR TOUGH DISTRACTORS -----------------
-    smart_database = {
-        "battery": ["Ternary Lithium (NMC)", "Solid-State Battery", "Sodium-Ion Battery", "Lithium-Titanate (LTO)", "Nickel-Metal Hydride (NiMH)"],
-        "transmission": ["7-Speed Wet DCT", "AISIN 8-Speed AT", "Electronically Controlled CVT (E-CVT)", "6-Speed Manual", "Single-Speed Reducer"],
-        "suspension": ["MacPherson Strut / Multi-link", "Double Wishbone / Multi-link", "Torsion Beam Rear Suspension", "Independent Multi-Link Beam"],
-        "engine": ["1.5L Turbocharged (TGDI)", "2.0L Turbocharged (TG)", "1.5L Naturally Aspirated", "2.0L Atkinson Cycle Hybrid"],
-        "speaker": ["8 Speakers", "11 Speakers", "22 Speakers with Dolby Atmos", "6 Speakers", "Sony Premium Audio (11 Speakers)"],
-        "wheel": ["18-inch Alloy Wheels", "19-inch Alloy Wheels", "20-inch Sport Alloy Wheels", "21-inch Multi-Spoke Wheels"],
-        "airbag": ["Dual Front Airbags", "6 Airbags (Front, Side & Curtain)", "7 Airbags (including Driver Knee Airbag)", "8 Airbags"],
-        "screen": ["14.6-inch HD Touchscreen", "10.1-inch Floating Screen", "8-inch Display Audio", "15.6-inch 2K OLED Display"],
-        "roof": ["Panoramic Glass Roof with Electric Sunshade", "Panoramic Sunroof", "Standard Tilting Sunroof", "Carbon Fiber Roof"]
+    # ----------------- TIGHT SEMANTIC SUB-GROUPS & TOUGH DECOYS -----------------
+    # This prevents cross-contamination (e.g., seat ventilation showing up under seat trim)
+    SEMANTIC_GROUPS = {
+        "anti_theft": {
+            "keywords": ["theft", "immobilizer", "alarm", "security", "burglar"],
+            "decoys": ["Engine Immobilizer + Anti-Theft Alarm", "Engine Immobilizer", "Perimeter Alarm System", "Ultrasonic Intrusion Sensor", "Anti-Theft Security Alarm"]
+        },
+        "seat_trim": {
+            "keywords": ["seat trim", "seat material", "upholstery", "seat fabric", "trim material"],
+            "decoys": ["Premium Nappa Leather", "High-Quality PVC Leather", "Fabric / Cloth Seats", "Synthetic Leather & Suede Combo", "Alcantara Trimmed Seats", "Genuine Leather Trim"]
+        },
+        "seat_adjustment": {
+            "keywords": ["adjust", "recline", "fold", "ventilation", "heating", "massage", "electric seat", "power seat", "lumbar"],
+            "decoys": ["6-way Power Adjustable Driver Seat", "Manual 4-way Passenger Seat", "Front Row Seat Ventilation & Heating", "Electric Folding & Electric Recline", "Driver Seat Memory Function"]
+        },
+        "airbags": {
+            "keywords": ["airbag", "curtain", "shield"],
+            "decoys": ["Dual Front Airbags", "6 Airbags (Front, Side & Curtain)", "7 Airbags (with Driver Knee Airbag)", "8 Airbags Shield System"]
+        },
+        "wheel_tire": {
+            "keywords": ["wheel", "tire", "alloy", "rim"],
+            "decoys": ["18-inch Alloy Wheels", "19-inch Alloy Wheels", "20-inch Sporty Alloy Wheels", "21-inch Multi-Spoke Wheels"]
+        },
+        "audio_system": {
+            "keywords": ["speaker", "sound", "audio", "dts", "dolby"],
+            "decoys": ["6 Speakers High-Performance Sound", "8 Speakers Premium Audio", "11 Speakers with Subwoofer", "22-Speaker Dolby Atmos Surround"]
+        },
+        "ac_climate": {
+            "keywords": ["ac ", "air condition", "climate", "filter", "pm2.5", "zone"],
+            "decoys": ["Dual-Zone Automatic Climate Control", "Single-Zone Manual AC with Rear Vents", "Three-Zone Climate Control", "Automatic AC with PM2.5 Air Filter"]
+        },
+        "drivetrain_power": {
+            "keywords": ["engine", "displacement", "torque", "power", "hp", "rpm", "output", "kw"],
+            "decoys": ["1.5L Turbocharged (TGDI)", "2.0L Turbocharged (TG)", "177 hp / 5500 rpm", "248 hp / 5250 rpm", "265 hp / 5500 rpm"]
+        },
+        "transmission": {
+            "keywords": ["transmission", "gearbox", "speed", "dct", "at", "cvt"],
+            "decoys": ["7-Speed Wet DCT", "AISIN 8-Speed AT", "Electronically Controlled CVT (E-CVT)", "Single-Speed Reducer"]
+        }
     }
+
+    # Helper function to find which semantic subcategory a feature belongs to
+    def get_semantic_subgroup(feature_name):
+        f_lower = str(feature_name).lower()
+        for group_name, config in SEMANTIC_GROUPS.items():
+            if any(keyword in f_lower for keyword in config["keywords"]):
+                return group_name
+        return None
 
     # Helper function to strip parenthetical info, newlines, and retrieve base specification text
     def get_base_specification(val_str):
@@ -146,7 +182,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         f_lower = str(feature_name).lower()
         if any(k in f_lower for k in ["length", "width", "height", "wheelbase", "capacity", "weight", "tank", "cargo", "volume"]):
             return "Dimensions, Weight & Capacities"
-        # EXPANDED KEYWORDS: Added 'hp', 'rpm', 'output', 'kw', 'torque' to keep engine specs matched together
         if any(k in f_lower for k in ["engine", "displacement", "torque", "power", "transmission", "speed", "fuel", "km/l", "hp", "rpm", "output", "kw"]):
             return "Engine, Drivetrain & Fuel Consumption"
         if any(k in f_lower for k in ["suspension", "wheel", "tire", "brake", "steering"]):
@@ -167,6 +202,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         # Phase 1: Build a global pool of real values for every single feature across all sheets (models)
         global_feature_values = {}  
         global_category_values = {}  
+        global_semantic_values = {g: set() for g in SEMANTIC_GROUPS.keys()}
         parsed_sheets = []
         
         for sheet in xls.sheet_names:
@@ -211,6 +247,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 feat_name = str(feature).strip()
                 feat_key = feat_name.lower()
                 cat_name = map_to_category(feat_name)
+                subgroup = get_semantic_subgroup(feat_name)
                 
                 if feat_key not in global_feature_values:
                     global_feature_values[feat_key] = set()
@@ -224,6 +261,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         if val_str not in ['●', '○', '■', '-', '•', 'nan', 'NaN', '']:
                             global_feature_values[feat_key].add(val_str)
                             global_category_values[cat_name].add(val_str)
+                            if subgroup:
+                                global_semantic_values[subgroup].add(val_str)
 
         # Phase 2: Generate highly competitive questions using global pools
         for p in parsed_sheets:
@@ -240,6 +279,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 feature_str = str(feature).strip()
                 feat_key = feature_str.lower()
                 category = map_to_category(feature_str)
+                subgroup = get_semantic_subgroup(feature_str)
                 
                 # Check if it is a Yes/No (Binary) feature
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
@@ -273,39 +313,41 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                         raw_wrong_choices = set()
                         
-                        # 1. Grab raw values from the same feature globally (other models)
-                        if feat_key in global_feature_values:
-                            for g_val in global_feature_values[feat_key]:
+                        # STEP 1: Strict Semantic Subgroup Isolation
+                        # If the feature has a tight semantic subgroup, ONLY pull wrong choices from that subgroup!
+                        if subgroup:
+                            # Pull from other models with the same semantic subgroup
+                            for g_val in global_semantic_values[subgroup]:
                                 raw_wrong_choices.add(g_val)
-                                    
-                        # 2. Inject smart predefined database values if we are running low on global specs
-                        if len(raw_wrong_choices) < 5:
-                            for db_key, db_decoys in smart_database.items():
-                                if db_key in feat_key:
-                                    for db_d in db_decoys:
-                                        raw_wrong_choices.add(db_d)
-                                            
-                        # 3. Inject category values if needed
-                        if len(raw_wrong_choices) < 5 and category in global_category_values:
-                            for cat_val in global_category_values[category]:
-                                raw_wrong_choices.add(cat_val)
+                            # Pull from the hand-crafted semantic decoy database
+                            for db_decoy in SEMANTIC_GROUPS[subgroup]["decoys"]:
+                                raw_wrong_choices.add(db_decoy)
+                        else:
+                            # General feature fallback if no precise subgroup matches
+                            if feat_key in global_feature_values:
+                                for g_val in global_feature_values[feat_key]:
+                                    raw_wrong_choices.add(g_val)
+                            
+                            # Standard category fallback
+                            if len(raw_wrong_choices) < 5 and category in global_category_values:
+                                for cat_val in global_category_values[category]:
+                                    raw_wrong_choices.add(cat_val)
 
-                        # Now, clean, strictly deduplicate, and enforce format-matching
+                        # Clean, deduplicate, and enforce format-matching
                         selected_wrongs = []
                         for raw_w in raw_wrong_choices:
                             w_base = get_base_specification(raw_w)
                             w_digits = extract_only_digits(w_base)
                             
-                            # Skip duplicates and empty strings
                             if w_base == "" or w_base.lower() in seen_simplified_texts:
                                 continue
                             if w_digits and w_digits in seen_digit_sequences:
                                 continue
                                 
-                            # FORMAT GUARD: Ensure we don't mix numbers and text
+                            # Format matching check
                             w_has_digits = any(c.isdigit() for c in w_base)
                             if correct_has_digits != w_has_digits:
-                                continue  # Skip if correct answer has numbers but this decoy does not (or vice versa)
+                                continue  
                                 
                             # Substring overlap checker
                             overlapping = False
@@ -316,7 +358,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             if overlapping:
                                 continue
                                 
-                            # If it passes all checks, add it!
                             seen_simplified_texts.add(w_base.lower())
                             if w_digits:
                                 seen_digit_sequences.add(w_digits)
@@ -327,7 +368,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                         # Ensure "Not Available" acts as a fallback decoy if appropriate (and format matches)
                         if len(final_wrongs) < 3 and correct_base != "Not Available" and "not available" not in seen_simplified_texts:
-                            if not correct_has_digits: # Only use "Not Available" text if the correct answer is text-based
+                            if not correct_has_digits: 
                                 final_wrongs.append("Not Available")
                             
                         # Combine clean correct answer with clean wrong answers
