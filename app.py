@@ -114,7 +114,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     generated_pool = []
     question_id_counter = 1
     
-    # Helper to organize questions into your standard 8 categories
+    # Organize questions into your standard 8 categories
     def map_to_category(feature_name):
         f_lower = str(feature_name).lower()
         if any(k in f_lower for k in ["length", "width", "height", "wheelbase", "capacity", "weight", "tank", "cargo", "volume"]):
@@ -142,12 +142,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             header_row_idx = 0
             for idx, row in df_raw.iterrows():
                 row_vals = [str(v).strip().lower() for v in row.values if pd.notna(v)]
-                
-                # A true header row must have at least 2 non-empty values (skips the title rows)
                 non_empty_count = sum(1 for v in row_vals if v != "")
                 if non_empty_count <= 1:
                     continue
-                
                 if any('feature' in r or 'specification' in r for r in row_vals):
                     header_row_idx = idx
                     break
@@ -155,7 +152,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             # 2. Load starting from the actual header row
             df = pd.read_excel(filepath, sheet_name=sheet, skiprows=header_row_idx)
             
-            # 3. Explicitly find the 'Feature & Specification' column
+            # 3. Find the 'Feature & Specification' column
             feat_col = None
             for col in df.columns:
                 if 'feature' in str(col).lower() or 'specification' in str(col).lower():
@@ -175,65 +172,67 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     continue
                 
                 feature_str = str(feature).strip()
-                
-                # Double safety: skip plain symbols as feature names
                 if feature_str in ['●', '○', '■', '-', '•', 'nan', 'NaN']:
                     continue
+                
+                # Check if this feature is a Yes/No feature or a text/numerical spec
+                # Yes/No features are typically filled with markers like ●, yes, standard, or are blank.
+                all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
+                is_binary_feature = all(v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'not available', 'n/a', ''] for v in all_trim_values)
+                
+                category = map_to_category(feature_str)
                 
                 for trim in trim_cols:
                     val_check = row[trim]
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     
-                    # --- TRANSLATE VALUE INTO PROFESSIONAL ANSWERS ---
-                    if raw_val == "" or raw_val.lower() in ['nan', '-', 'no', 'n/a']:
-                        correct_val = "Not Available"
-                    elif raw_val in ['●', '•', 'yes', 'Yes']:
-                        correct_val = "Standard"
+                    # Determine Correct Answer based on type
+                    if is_binary_feature:
+                        if raw_val in ['●', '•', 'yes', 'Yes', 'Standard']:
+                            correct_val = "Yes, Standard"
+                        else:
+                            correct_val = "Not Available"
                     else:
-                        correct_val = raw_val
+                        if raw_val == "" or raw_val.lower() in ['nan', '-', 'no', 'n/a']:
+                            correct_val = "Not Available"
+                        else:
+                            correct_val = raw_val
                     
-                    # Clean phrasing for the team
-                    q_text = f"For the GAC {sheet.strip()} ({trim.strip()}), what is the feature details for '{feature_str}'?"
-                    category = map_to_category(feature_str)
+                    # Generate natural, human-like questions
+                    model_name = sheet.strip()
+                    trim_name = trim.strip()
                     
-                    # Create logical wrong answers (distractors)
-                    wrong_choices = set()
-                    
-                    if correct_val in ["Standard", "Not Available"]:
-                        wrong_choices.add("Standard" if correct_val == "Not Available" else "Not Available")
-                        wrong_choices.add("Optional Feature")
-                        wrong_choices.add("Premium Package Only")
+                    if is_binary_feature:
+                        # Human style: Is the Power Tailgate standard on the GS8 Desert Raider?
+                        q_text = f"Is the '{feature_str}' feature available as standard on the GAC {model_name} ({trim_name})?"
+                        options = ["Yes, Standard", "Not Available", "Optional Feature", "Available in Premium Packages Only"]
                     else:
-                        # Pull alternative values from adjacent trims to create realistic wrong choices
-                        for tc in trim_cols:
-                            sib_val = row[tc]
-                            sib_raw = str(sib_val).strip() if pd.notna(sib_val) else ""
-                            
-                            if sib_raw.lower() not in ['nan', '', raw_val.lower()]:
-                                if sib_raw in ['●', '•', 'yes', 'Yes']:
-                                    wrong_choices.add("Standard")
-                                elif sib_raw == "" or sib_raw.lower() in ['nan', '-', 'no', 'n/a']:
-                                    wrong_choices.add("Not Available")
-                                else:
-                                    wrong_choices.add(sib_raw)
+                        # Human style: What is the Max. Torque for the GS8 Desert Raider?
+                        q_text = f"What is the '{feature_str}' for the GAC {model_name} ({trim_name})?"
                         
-                        # Add generic technical options to fill up choices
-                        decoys = ["Not Available", "Standard", "Optional Feature", "Premium Variant Only"]
-                        for decoy in decoys:
-                            if decoy.lower() != correct_val.lower():
-                                wrong_choices.add(decoy)
+                        # Find other values in the same row from other trims to use as logical wrong answers
+                        wrong_choices = set()
+                        for other_trim in trim_cols:
+                            other_val = str(row[other_trim]).strip() if pd.notna(row[other_trim]) else ""
+                            if other_val != "" and other_val.lower() not in ['nan', '-', 'no', 'n/a', raw_val.lower()]:
+                                wrong_choices.add(other_val)
+                        
+                        # Filter out symbols from options
+                        wrong_choices = {w for w in wrong_choices if w not in ['●', '•', '-', 'nan', 'NaN']}
+                        
+                        # Add a clean "Not Available" if applicable, otherwise generate realistic values
+                        if correct_val != "Not Available":
+                            wrong_choices.add("Not Available")
+                            
+                        options = [correct_val] + list(wrong_choices)[:3]
+                        
+                        # Fallback options just in case we don't have enough logical choices
+                        fallbacks = ["Not Applicable", "Standard Package", "Custom Order Only"]
+                        for fb in fallbacks:
+                            if len(options) < 4 and fb != correct_val:
+                                options.append(fb)
                     
-                    # Merge, clean, and shuffle options
-                    options = [correct_val] + list(wrong_choices)[:3]
-                    options = [o for o in options if o not in ['●', '•', '-', 'nan', 'NaN']]
-                    
-                    if len(options) < 4:
-                        for opt in ["Standard", "Not Available", "Optional Feature", "Premium Package Only"]:
-                            if opt not in options:
-                                options.append(opt)
-                            if len(options) == 4:
-                                break
-                    
+                    # Shuffle to mix up the choices
                     random.shuffle(options)
                     
                     generated_pool.append({
