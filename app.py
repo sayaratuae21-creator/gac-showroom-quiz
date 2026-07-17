@@ -110,6 +110,7 @@ import copy
 # This function automatically reads your uploaded "GIMINI SPECS.xlsx"
 # and builds a comprehensive question pool for all vehicle models.
 # ==========================================================
+import re
 import random
 import pandas as pd
 
@@ -118,7 +119,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     question_id_counter = 1
     
     # ----------------- SMART AUTOMOTIVE DATABASE FOR TOUGH DISTRACTORS -----------------
-    # This database automatically steps in when a technical feature is unique to one model
     smart_database = {
         "battery": ["Ternary Lithium (NMC)", "Solid-State Battery", "Sodium-Ion Battery", "Lithium-Titanate (LTO)", "Nickel-Metal Hydride (NiMH)"],
         "transmission": ["7-Speed Wet DCT", "AISIN 8-Speed AT", "Electronically Controlled CVT (E-CVT)", "6-Speed Manual", "Single-Speed Reducer"],
@@ -130,6 +130,19 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         "screen": ["14.6-inch HD Touchscreen", "10.1-inch Floating Screen", "8-inch Display Audio", "15.6-inch 2K OLED Display"],
         "roof": ["Panoramic Glass Roof with Electric Sunshade", "Panoramic Sunroof", "Standard Tilting Sunroof", "Carbon Fiber Roof"]
     }
+
+    # Helper function to strip parenthetical info, newlines, and retrieve base specification text
+    def get_base_specification(val_str):
+        if not val_str:
+            return ""
+        # Remove anything in (brackets) or [parentheses]
+        base = re.sub(r'\s*[\(\[].*?[\)\]]', '', str(val_str))
+        # Split on newlines or slashes and take the first item
+        base = base.split('\n')[0].split('/')[0].strip()
+        return base
+
+    def extract_only_digits(val_str):
+        return "".join(re.findall(r'\d+', str(val_str)))
 
     def map_to_category(feature_name):
         f_lower = str(feature_name).lower()
@@ -153,10 +166,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         xls = pd.ExcelFile(filepath)
         
         # Phase 1: Build a global pool of real values for every single feature across all sheets (models)
-        global_feature_values = {}  # Format: {"feature name lowercase": set([value1, value2, value3])}
-        global_category_values = {}  # Format: {"Category Name": set([value1, value2])}
-        
-        # Temporary parsing structure to read sheet details
+        global_feature_values = {}  
+        global_category_values = {}  
         parsed_sheets = []
         
         for sheet in xls.sheet_names:
@@ -253,44 +264,71 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
                         q_text = f"What is the '{feature_str}' for the GAC {sheet_name.strip()} ({trim.strip()})?"
                         
-                        # Gather actual, logical wrong answers (decoys)
-                        wrong_choices = set()
+                        # Set up the Deduplication system for this specific question
+                        correct_base = get_base_specification(correct_val)
+                        correct_digits = extract_only_digits(correct_base)
                         
-                        # 1. Grab values from the same feature name globally (other models)
+                        seen_simplified_texts = {correct_base.lower()}
+                        seen_digit_sequences = {correct_digits} if correct_digits else set()
+                        
+                        raw_wrong_choices = set()
+                        
+                        # 1. Grab raw values from the same feature globally (other models)
                         if feat_key in global_feature_values:
                             for g_val in global_feature_values[feat_key]:
-                                if g_val.lower() != correct_val.lower() and g_val.lower() not in ['nan', '-', 'no', 'n/a']:
-                                    wrong_choices.add(g_val)
+                                raw_wrong_choices.add(g_val)
                                     
-                        # 2. If we need more decoys, inject smart predefined automotive specs
-                        if len(wrong_choices) < 3:
+                        # 2. Inject smart predefined database values if we are running low on global specs
+                        if len(raw_wrong_choices) < 5:
                             for db_key, db_decoys in smart_database.items():
                                 if db_key in feat_key:
                                     for db_d in db_decoys:
-                                        if db_d.lower() != correct_val.lower():
-                                            wrong_choices.add(db_d)
+                                        raw_wrong_choices.add(db_d)
                                             
-                        # 3. If we STILL don't have enough, grab other specifications from the exact same Category
-                        if len(wrong_choices) < 3 and category in global_category_values:
+                        # 3. Inject category values if needed
+                        if len(raw_wrong_choices) < 5 and category in global_category_values:
                             for cat_val in global_category_values[category]:
-                                if cat_val.lower() != correct_val.lower() and cat_val.lower() not in ['nan', '-', 'no', 'n/a']:
-                                    wrong_choices.add(cat_val)
-                                    if len(wrong_choices) >= 5:
-                                        break
-                        
-                        # Prepare the final option list (1 correct + 3 wrong)
-                        selected_wrongs = list(wrong_choices)[:3]
-                        
-                        # Always include "Not Available" as a potential distractor if it is not the correct answer
-                        if len(selected_wrongs) < 3 and correct_val != "Not Available":
-                            selected_wrongs.append("Not Available")
+                                raw_wrong_choices.add(cat_val)
+
+                        # Now, clean and strictly deduplicate the candidates
+                        selected_wrongs = []
+                        for raw_w in raw_wrong_choices:
+                            w_base = get_base_specification(raw_w)
+                            w_digits = extract_only_digits(w_base)
                             
-                        options = [correct_val] + selected_wrongs
+                            if w_base == "" or w_base.lower() in seen_simplified_texts:
+                                continue
+                            if w_digits and w_digits in seen_digit_sequences:
+                                continue
+                                
+                            # Substring overlap checker (prevents "4410 × 1850 × 1600" matching "4410 × 1850 × 1600 with...")
+                            overlapping = False
+                            for seen in seen_simplified_texts:
+                                if w_base.lower() in seen or seen in w_base.lower():
+                                    overlapping = True
+                                    break
+                            if overlapping:
+                                continue
+                                
+                            # If it passes all tests, it's a valid clean distractor!
+                            seen_simplified_texts.add(w_base.lower())
+                            if w_digits:
+                                seen_digit_sequences.add(w_digits)
+                            selected_wrongs.append(w_base)
                         
-                        # Ultimate fallback just in case
+                        # Select top 3 cleanest distractors
+                        final_wrongs = selected_wrongs[:3]
+                        
+                        # Ensure "Not Available" acts as a fallback clean decoy if appropriate
+                        if len(final_wrongs) < 3 and correct_base != "Not Available" and "not available" not in seen_simplified_texts:
+                            final_wrongs.append("Not Available")
+                            
+                        # Combine clean correct answer with clean wrong answers
+                        options = [correct_base] + final_wrongs
+                        
+                        # Ultimate fallback to keep options count at exactly 4
                         while len(options) < 4:
-                            fallback_val = f"Alternative Specification {len(options)}"
-                            options.append(fallback_val)
+                            options.append(f"Alternative Specification {len(options)}")
                     
                     # Shuffle options
                     random.shuffle(options)
@@ -300,7 +338,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         "category": category,
                         "question": q_text,
                         "options": options,
-                        "correct": correct_val
+                        "correct": correct_base if not is_binary_feature else correct_val
                     })
                     question_id_counter += 1
                     
