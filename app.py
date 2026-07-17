@@ -135,9 +135,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     def get_base_specification(val_str):
         if not val_str:
             return ""
-        # Remove anything in (brackets) or [parentheses]
         base = re.sub(r'\s*[\(\[].*?[\)\]]', '', str(val_str))
-        # Split on newlines or slashes and take the first item
         base = base.split('\n')[0].split('/')[0].strip()
         return base
 
@@ -148,7 +146,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         f_lower = str(feature_name).lower()
         if any(k in f_lower for k in ["length", "width", "height", "wheelbase", "capacity", "weight", "tank", "cargo", "volume"]):
             return "Dimensions, Weight & Capacities"
-        if any(k in f_lower for k in ["engine", "displacement", "torque", "power", "transmission", "speed", "fuel", "km/l"]):
+        # EXPANDED KEYWORDS: Added 'hp', 'rpm', 'output', 'kw', 'torque' to keep engine specs matched together
+        if any(k in f_lower for k in ["engine", "displacement", "torque", "power", "transmission", "speed", "fuel", "km/l", "hp", "rpm", "output", "kw"]):
             return "Engine, Drivetrain & Fuel Consumption"
         if any(k in f_lower for k in ["suspension", "wheel", "tire", "brake", "steering"]):
             return "Suspension, Steering, Brakes & Wheels"
@@ -264,9 +263,10 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
                         q_text = f"What is the '{feature_str}' for the GAC {sheet_name.strip()} ({trim.strip()})?"
                         
-                        # Set up the Deduplication system for this specific question
+                        # Set up the Deduplication and Format Matching system
                         correct_base = get_base_specification(correct_val)
                         correct_digits = extract_only_digits(correct_base)
+                        correct_has_digits = any(c.isdigit() for c in correct_base)
                         
                         seen_simplified_texts = {correct_base.lower()}
                         seen_digit_sequences = {correct_digits} if correct_digits else set()
@@ -290,18 +290,24 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             for cat_val in global_category_values[category]:
                                 raw_wrong_choices.add(cat_val)
 
-                        # Now, clean and strictly deduplicate the candidates
+                        # Now, clean, strictly deduplicate, and enforce format-matching
                         selected_wrongs = []
                         for raw_w in raw_wrong_choices:
                             w_base = get_base_specification(raw_w)
                             w_digits = extract_only_digits(w_base)
                             
+                            # Skip duplicates and empty strings
                             if w_base == "" or w_base.lower() in seen_simplified_texts:
                                 continue
                             if w_digits and w_digits in seen_digit_sequences:
                                 continue
                                 
-                            # Substring overlap checker (prevents "4410 × 1850 × 1600" matching "4410 × 1850 × 1600 with...")
+                            # FORMAT GUARD: Ensure we don't mix numbers and text
+                            w_has_digits = any(c.isdigit() for c in w_base)
+                            if correct_has_digits != w_has_digits:
+                                continue  # Skip if correct answer has numbers but this decoy does not (or vice versa)
+                                
+                            # Substring overlap checker
                             overlapping = False
                             for seen in seen_simplified_texts:
                                 if w_base.lower() in seen or seen in w_base.lower():
@@ -310,7 +316,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             if overlapping:
                                 continue
                                 
-                            # If it passes all tests, it's a valid clean distractor!
+                            # If it passes all checks, add it!
                             seen_simplified_texts.add(w_base.lower())
                             if w_digits:
                                 seen_digit_sequences.add(w_digits)
@@ -319,16 +325,17 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         # Select top 3 cleanest distractors
                         final_wrongs = selected_wrongs[:3]
                         
-                        # Ensure "Not Available" acts as a fallback clean decoy if appropriate
+                        # Ensure "Not Available" acts as a fallback decoy if appropriate (and format matches)
                         if len(final_wrongs) < 3 and correct_base != "Not Available" and "not available" not in seen_simplified_texts:
-                            final_wrongs.append("Not Available")
+                            if not correct_has_digits: # Only use "Not Available" text if the correct answer is text-based
+                                final_wrongs.append("Not Available")
                             
                         # Combine clean correct answer with clean wrong answers
                         options = [correct_base] + final_wrongs
                         
                         # Ultimate fallback to keep options count at exactly 4
                         while len(options) < 4:
-                            options.append(f"Alternative Specification {len(options)}")
+                            options.append(f"Alternative Spec {len(options)}")
                     
                     # Shuffle options
                     random.shuffle(options)
