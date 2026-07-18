@@ -134,16 +134,13 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     try:
         xls = pd.ExcelFile(filepath)
         
-        # Structure to track: [Section] -> [Feature] -> Set of values
+        # Trackers
         global_spec_database = {}
-        # Structure to track where distinct features are uniquely standard/available:
-        # [Feature Key] -> List of strings like "GAC EMPOW (GE 1.5TG)"
         feature_availability_map = {}
-        
         parsed_sheets = []
-        all_model_trim_identities = [] # Used for generating model decoys
+        all_model_trim_identities = []
 
-        # PHASE 1: Scan and compile database across all sheets
+        # PHASE 1: Build the unified cross-model database
         for sheet in xls.sheet_names:
             df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
             
@@ -176,10 +173,10 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     continue
                 
                 feature_str = str(feature_raw).strip()
-                if feature_str == "" or feature_str.startswith('MAIN TECHNICAL'):
+                if feature_str == "" or any(keyword in feature_str.upper() for keyword in ['MAIN TECHNICAL', 'SPECIFICATION']):
                     continue
                 
-                # Check for section separator row
+                # Check for section separator row (where trim cells are empty)
                 trim_values = [row[t] for t in trim_cols if pd.notna(row[t])]
                 if len(trim_values) == 0:
                     current_section = normalize_header(feature_str)
@@ -202,14 +199,12 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                     if pd.notna(val):
                         val_str = str(val).strip()
-                        # If cell is not empty or hyphen, it means it is a feature or standard
-                        if val_str not in ['-', '', 'nan', 'NaN']:
+                        if val_str not in ['-', '', 'nan', 'NaN', 'Not Available']:
                             global_spec_database[current_section][feat_key].add(val_str)
-                            # Record that this specific model/trim features it
-                            if val_str in ['●', '•', 'yes', 'Yes', 'Standard'] or len(val_str) > 2:
+                            if val_str.lower() in ['●', '•', 'yes', 'standard'] or len(val_str) > 2:
                                 feature_availability_map[feat_key].append(model_trim_name)
 
-        # PHASE 2: Core Balanced Engine Generation
+        # PHASE 2: Dynamic Question Matrix Generation
         for p in parsed_sheets:
             sheet_name = p["sheet_name"]
             df = p["df"]
@@ -224,7 +219,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     continue
                 
                 feature_str = str(feature_raw).strip()
-                if feature_str == "" or feature_str.startswith('MAIN TECHNICAL'):
+                if feature_str == "" or any(keyword in feature_str.upper() for keyword in ['MAIN TECHNICAL', 'SPECIFICATION']):
                     continue
                 
                 trim_values = [row[t] for t in trim_cols if pd.notna(row[t])]
@@ -234,7 +229,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 
                 feat_key = feature_str.lower()
                 
-                # Identify if binary (Yes/No standard feature)
+                # Check if features use standard Binary tags
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
                 is_binary_feature = all(v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'not available', 'n/a', ''] for v in all_trim_values)
                 
@@ -243,26 +238,16 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     current_model_trim = f"GAC {sheet_name} ({trim.strip()})"
                     
-                    # ------------------------------------------------------------------
-                    # CASE A: THE NEW INVERTED QUESTION TYPE ("Which model has this?")
-                    # Generated for specific premium upgrades or descriptive items
-                    # ------------------------------------------------------------------
+                    # TYPE 1: INVERTED MODEL HUNT (50% chance for technical entries with unique text values)
                     if not is_binary_feature and raw_val not in ['-', '', 'nan', 'NaN'] and random.random() > 0.5:
                         clean_spec = get_base_specification(raw_val)
-                        
                         q_text = f"Which GAC model and variant features the following specification: '{clean_spec}' under '{feature_str}'?"
                         correct_ans = current_model_trim
                         
-                        # Gather actual other cars as decoys
                         model_decoys = [m for m in all_model_trim_identities if m != correct_ans]
-                        # Prioritize cars that DON'T share this exact value string
                         strict_decoys = [m for m in model_decoys if m not in feature_availability_map.get(feat_key, [])]
                         
-                        if len(strict_decoys) >= 3:
-                            chosen_decoys = random.sample(strict_decoys, 3)
-                        else:
-                            chosen_decoys = random.sample(model_decoys, 3) if len(model_decoys) >= 3 else model_decoys
-                            
+                        chosen_decoys = random.sample(strict_decoys, 3) if len(strict_decoys) >= 3 else random.sample(model_decoys, 3)
                         options = [correct_ans] + chosen_decoys
                         random.shuffle(options)
                         
@@ -276,15 +261,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
 
-                    # ------------------------------------------------------------------
-                    # CASE B: BINARY SELECTION -> CHANGED TO CLEAN YES OR NO QUESTIONS
-                    # ------------------------------------------------------------------
+                    # TYPE 2: CRISP YES/NO BINARY INTERFACES
                     if is_binary_feature:
-                        if raw_val in ['●', '•', 'yes', 'Yes', 'Standard']:
-                            correct_val = "Yes"
-                        else:
-                            correct_val = "No"
-                            
+                        correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
                         q_text = f"Is the '{feature_str}' feature available as standard on the {current_model_trim}?"
                         options = ["Yes", "No"]
                         
@@ -297,9 +276,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         })
                         question_id_counter += 1
                     
-                    # ------------------------------------------------------------------
-                    # CASE C: STANDARD SPECIFICATION VALUES QUESTIONS
-                    # ------------------------------------------------------------------
+                    # TYPE 3: NUMERICAL / TECHNICAL COMPARISONS
                     else:
                         correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
                         q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
@@ -326,9 +303,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             w_base = get_base_specification(rw)
                             w_dig = extract_only_digits(w_base)
                             
-                            if w_base == "" or w_base.lower() in seen_texts:
-                                continue
-                            if w_dig and w_dig in seen_digits:
+                            if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
                                 continue
                             if correct_has_digits != any(c.isdigit() for c in w_base):
                                 continue  
