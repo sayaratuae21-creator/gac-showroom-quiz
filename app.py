@@ -115,7 +115,10 @@ import random
 import pandas as pd
 
 def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
-    generated_pool = []
+    # Two separate pools to guarantee a strict 2/5 (40%) Yes/No question ratio
+    pool_binary_yes_no = []
+    pool_technical_specs = []
+    
     question_id_counter = 1
     
     def normalize_header(header_str):
@@ -134,13 +137,12 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     try:
         xls = pd.ExcelFile(filepath)
         
-        # Trackers
         global_spec_database = {}
         feature_availability_map = {}
         parsed_sheets = []
         all_model_trim_identities = []
 
-        # PHASE 1: Build the unified cross-model database
+        # PHASE 1: Build cross-model references
         for sheet in xls.sheet_names:
             df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
             
@@ -154,7 +156,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     break
             
             df = pd.read_excel(filepath, sheet_name=sheet, skiprows=header_row_idx)
-            
             feat_col = next((c for c in df.columns if 'feature' in str(c).lower() or 'specification' in str(c).lower()), df.columns[0])
             trim_cols = [c for c in df.columns if c != feat_col and not str(c).startswith('Unnamed')]
             
@@ -176,7 +177,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 if feature_str == "" or any(keyword in feature_str.upper() for keyword in ['MAIN TECHNICAL', 'SPECIFICATION']):
                     continue
                 
-                # Check for section separator row (where trim cells are empty)
                 trim_values = [row[t] for t in trim_cols if pd.notna(row[t])]
                 if len(trim_values) == 0:
                     current_section = normalize_header(feature_str)
@@ -204,7 +204,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             if val_str.lower() in ['●', '•', 'yes', 'standard'] or len(val_str) > 2:
                                 feature_availability_map[feat_key].append(model_trim_name)
 
-        # PHASE 2: Dynamic Question Matrix Generation
+        # PHASE 2: Generate sorted question categorizations
         for p in parsed_sheets:
             sheet_name = p["sheet_name"]
             df = p["df"]
@@ -228,8 +228,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     continue
                 
                 feat_key = feature_str.lower()
-                
-                # Check if features use standard Binary tags
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
                 is_binary_feature = all(v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'not available', 'n/a', ''] for v in all_trim_values)
                 
@@ -238,8 +236,24 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     current_model_trim = f"GAC {sheet_name} ({trim.strip()})"
                     
-                    # TYPE 1: INVERTED MODEL HUNT (50% chance for technical entries with unique text values)
-                    if not is_binary_feature and raw_val not in ['-', '', 'nan', 'NaN'] and random.random() > 0.5:
+                    # TYPE A: YES/NO BINARY INTERFACES (Mapped to separate collection)
+                    if is_binary_feature:
+                        correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
+                        q_text = f"Is the '{feature_str}' feature available as standard on the {current_model_trim}?"
+                        
+                        pool_binary_yes_no.append({
+                            "id": f"auto_binary_{question_id_counter}",
+                            "category": current_section,
+                            "question": q_text,
+                            "options": ["Yes", "No"],
+                            "correct": correct_val,
+                            "answer": correct_val  # Added to prevent KeyError on submission
+                        })
+                        question_id_counter += 1
+                        continue
+                    
+                    # TYPE B: INVERTED MODEL HUNT 
+                    if raw_val not in ['-', '', 'nan', 'NaN'] and random.random() > 0.5:
                         clean_spec = get_base_specification(raw_val)
                         q_text = f"Which GAC model and variant features the following specification: '{clean_spec}' under '{feature_str}'?"
                         correct_ans = current_model_trim
@@ -251,89 +265,86 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         options = [correct_ans] + chosen_decoys
                         random.shuffle(options)
                         
-                        generated_pool.append({
+                        pool_technical_specs.append({
                             "id": f"auto_model_hunt_{question_id_counter}",
                             "category": current_section,
                             "question": q_text,
                             "options": options,
-                            "correct": correct_ans
+                            "correct": correct_ans,
+                            "answer": correct_ans  # Added to prevent KeyError on submission
                         })
                         question_id_counter += 1
                         continue
 
-                    # TYPE 2: CRISP YES/NO BINARY INTERFACES
-                    if is_binary_feature:
-                        correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
-                        q_text = f"Is the '{feature_str}' feature available as standard on the {current_model_trim}?"
-                        options = ["Yes", "No"]
-                        
-                        generated_pool.append({
-                            "id": f"auto_binary_{question_id_counter}",
-                            "category": current_section,
-                            "question": q_text,
-                            "options": options,
-                            "correct": correct_val
-                        })
-                        question_id_counter += 1
+                    # TYPE C: SPEC VALUE DETAILS
+                    correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
+                    q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
                     
-                    # TYPE 3: NUMERICAL / TECHNICAL COMPARISONS
-                    else:
-                        correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
-                        q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
-                        
-                        correct_base = get_base_specification(correct_val)
-                        correct_digits = extract_only_digits(correct_base)
-                        correct_has_digits = any(c.isdigit() for c in correct_base)
-                        
-                        seen_texts = {correct_base.lower()}
-                        seen_digits = {correct_digits} if correct_digits else set()
-                        
-                        raw_wrongs = set()
-                        if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
-                            for val_v in global_spec_database[current_section][feat_key]:
-                                raw_wrongs.add(val_v)
-                                
-                        if len(raw_wrongs) < 4 and current_section in global_spec_database:
-                            for fk, val_set in global_spec_database[current_section].items():
-                                for f_val in val_set:
-                                    raw_wrongs.add(f_val)
-
-                        selected_wrongs = []
-                        for rw in raw_wrongs:
-                            w_base = get_base_specification(rw)
-                            w_dig = extract_only_digits(w_base)
+                    correct_base = get_base_specification(correct_val)
+                    correct_digits = extract_only_digits(correct_base)
+                    correct_has_digits = any(c.isdigit() for c in correct_base)
+                    
+                    seen_texts = {correct_base.lower()}
+                    seen_digits = {correct_digits} if correct_digits else set()
+                    
+                    raw_wrongs = set()
+                    if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
+                        for val_v in global_spec_database[current_section][feat_key]:
+                            raw_wrongs.add(val_v)
                             
-                            if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
-                                continue
-                            if correct_has_digits != any(c.isdigit() for c in w_base):
-                                continue  
-                                
-                            seen_texts.add(w_base.lower())
-                            if w_dig:
-                                seen_digits.add(w_dig)
-                            selected_wrongs.append(w_base)
-                        
-                        final_wrongs = selected_wrongs[:3]
-                        while len(final_wrongs) < 3:
-                            final_wrongs.append("Not Available" if "not available" not in seen_texts else f"Alternative Option {len(final_wrongs)+1}")
-                        
-                        options = [correct_base] + final_wrongs[:3]
-                        random.shuffle(options)
-                        
-                        generated_pool.append({
-                            "id": f"auto_spec_{question_id_counter}",
-                            "category": current_section,
-                            "question": q_text,
-                            "options": options,
-                            "correct": correct_base
-                        })
-                        question_id_counter += 1
-                        
+                    selected_wrongs = []
+                    for rw in raw_wrongs:
+                        w_base = get_base_specification(rw)
+                        w_dig = extract_only_digits(w_base)
+                        if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
+                            continue
+                        if correct_has_digits != any(c.isdigit() for c in w_base):
+                            continue  
+                            
+                        seen_texts.add(w_base.lower())
+                        if w_dig:
+                            seen_digits.add(w_dig)
+                        selected_wrongs.append(w_base)
+                    
+                    final_wrongs = selected_wrongs[:3]
+                    while len(final_wrongs) < 3:
+                        final_wrongs.append("Not Available" if "not available" not in seen_texts else f"Alternative Option {len(final_wrongs)+1}")
+                    
+                    options = [correct_base] + final_wrongs[:3]
+                    random.shuffle(options)
+                    
+                    pool_technical_specs.append({
+                        "id": f"auto_spec_{question_id_counter}",
+                        "category": current_section,
+                        "question": q_text,
+                        "options": options,
+                        "correct": correct_base,
+                        "answer": correct_base  # Added to prevent KeyError on submission
+                    })
+                    question_id_counter += 1
+
+        # ------------------------------------------------------------------
+        # PHASE 3: STRICT 2/5 (40%) YES/NO BALANCE MIXER
+        # ------------------------------------------------------------------
+        # Total number of questions your app shows per test session (Adjust if your test length is different)
+        TOTAL_QUIZ_SIZE = 10 
+        target_binary_count = int(TOTAL_QUIZ_SIZE * (2 / 5)) # Exactly 4
+        target_tech_count = TOTAL_QUIZ_SIZE - target_binary_count # Exactly 6
+
+        random.shuffle(pool_binary_yes_no)
+        random.shuffle(pool_technical_specs)
+
+        # Slice precisely to match the percentage constraints
+        final_pool = (
+            pool_binary_yes_no[:target_binary_count] + 
+            pool_technical_specs[:target_tech_count]
+        )
+        random.shuffle(final_pool)
+        return final_pool
+
     except Exception as e:
         return []
-
-    return generated_pool
-    # Load the dynamic pool into memory
+        # Load the dynamic pool into memory
 MASTER_QUESTION_POOL = load_questions_from_excel()
 # --- DATABASE LOAD / SAVE FUNCTIONS ---
 def load_global_db():
