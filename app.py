@@ -118,55 +118,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     generated_pool = []
     question_id_counter = 1
     
-    # ----------------- TIGHT SEMANTIC SUB-GROUPS & TOUGH DECOYS -----------------
-    SEMANTIC_GROUPS = {
-        "anti_theft": {
-            "keywords": ["theft", "immobilizer", "alarm", "security", "burglar"],
-            "decoys": ["Engine Immobilizer + Anti-Theft Alarm", "Engine Immobilizer", "Perimeter Alarm System", "Ultrasonic Intrusion Sensor", "Anti-Theft Security Alarm"]
-        },
-        "seat_trim": {
-            "keywords": ["seat trim", "seat material", "upholstery", "seat fabric", "trim material"],
-            "decoys": ["Premium Nappa Leather", "High-Quality PVC Leather", "Fabric / Cloth Seats", "Synthetic Leather & Suede Combo", "Alcantara Trimmed Seats", "Genuine Leather Trim"]
-        },
-        "seat_adjustment": {
-            "keywords": ["adjust", "recline", "fold", "ventilation", "heating", "massage", "electric seat", "power seat", "lumbar"],
-            "decoys": ["6-way Power Adjustable Driver Seat", "Manual 4-way Passenger Seat", "Front Row Seat Ventilation & Heating", "Electric Folding & Electric Recline", "Driver Seat Memory Function"]
-        },
-        "airbags": {
-            "keywords": ["airbag", "curtain", "shield"],
-            "decoys": ["Dual Front Airbags", "6 Airbags (Front, Side & Curtain)", "7 Airbags (with Driver Knee Airbag)", "8 Airbags Shield System"]
-        },
-        "wheel_tire": {
-            "keywords": ["wheel", "tire", "alloy", "rim"],
-            "decoys": ["18-inch Alloy Wheels", "19-inch Alloy Wheels", "20-inch Sporty Alloy Wheels", "21-inch Multi-Spoke Wheels"]
-        },
-        "audio_system": {
-            "keywords": ["speaker", "sound", "audio", "dts", "dolby"],
-            "decoys": ["6 Speakers High-Performance Sound", "8 Speakers Premium Audio", "11 Speakers with Subwoofer", "22-Speaker Dolby Atmos Surround"]
-        },
-        "ac_climate": {
-            "keywords": ["ac ", "air condition", "climate", "filter", "pm2.5", "zone"],
-            "decoys": ["Dual-Zone Automatic Climate Control", "Single-Zone Manual AC with Rear Vents", "Three-Zone Climate Control", "Automatic AC with PM2.5 Air Filter"]
-        },
-        "drivetrain_power": {
-            "keywords": ["engine", "displacement", "torque", "power", "hp", "rpm", "output", "kw"],
-            "decoys": ["1.5L Turbocharged (TGDI)", "2.0L Turbocharged (TG)", "177 hp / 5500 rpm", "248 hp / 5250 rpm", "265 hp / 5500 rpm"]
-        },
-        "transmission": {
-            "keywords": ["transmission", "gearbox", "speed", "dct", "at", "cvt"],
-            "decoys": ["7-Speed Wet DCT", "AISIN 8-Speed AT", "Electronically Controlled CVT (E-CVT)", "Single-Speed Reducer"]
-        }
-    }
+    def normalize_header(header_str):
+        return str(header_str).strip().upper()
 
-    # Helper function to find which semantic subcategory a feature belongs to
-    def get_semantic_subgroup(feature_name):
-        f_lower = str(feature_name).lower()
-        for group_name, config in SEMANTIC_GROUPS.items():
-            if any(keyword in f_lower for keyword in config["keywords"]):
-                return group_name
-        return None
-
-    # Helper function to strip parenthetical info, newlines, and retrieve base specification text
     def get_base_specification(val_str):
         if not val_str:
             return ""
@@ -177,67 +131,26 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     def extract_only_digits(val_str):
         return "".join(re.findall(r'\d+', str(val_str)))
 
-    # ----------------- ADVANCED CONTEXTUAL GUARD -----------------
-    # Prevents format-mismatching (e.g. comparing "km/h" with "Passengers" or "DCT")
-    def is_contextually_compatible(feature_name, correct_val, decoy_val):
-        f_lower = str(feature_name).lower()
-        c_lower = str(correct_val).lower()
-        d_lower = str(decoy_val).lower()
-        
-        # 1. Max Speed (km/h) Guard: Decoys must be pure numbers, or contain speed terms, and NOT contain gearbox terms.
-        if "max speed" in f_lower or "km/h" in f_lower or "top speed" in f_lower:
-            has_digit = any(char.isdigit() for char in d_lower)
-            has_gearbox = any(tx in d_lower for tx in ["at", "dct", "cvt", "manual", "reducer", "clutch", "speed wet", "speed automatic"])
-            has_passengers = "passenger" in d_lower or "seat" in d_lower
-            return has_digit and not has_gearbox and not has_passengers
-            
-        # 2. Screen / Dashboard / Display Guard: Decoys must be screen descriptions (inch, LCD, display, TFT, screen, cluster)
-        if any(k in f_lower for k in ["dashboard", "screen", "display", "instrument", "cluster", "touchscreen", "lcd", "meter"]):
-            is_screen = any(k in d_lower for k in ["inch", "lcd", "display", "screen", "tft", "instrument", "cluster", "color", "meter"])
-            is_unrelated = any(k in d_lower for k in ["pm 2.5", "sensor", "airbag", "seat", "wheel", "camera"])
-            return is_screen and not is_unrelated
-
-        # 3. Seating Capacity Guard: Decoys must contain seating/passenger capacity numbers
-        if "capacity" in f_lower or "passenger" in f_lower or "seating" in f_lower:
-            return any(k in d_lower for k in ["passenger", "seat", "person"]) or (d_lower.isdigit() and len(d_lower) == 1)
-
-        return True
-
-    def map_to_category(feature_name):
-        f_lower = str(feature_name).lower()
-        if any(k in f_lower for k in ["length", "width", "height", "wheelbase", "capacity", "weight", "tank", "cargo", "volume"]):
-            return "Dimensions, Weight & Capacities"
-        if any(k in f_lower for k in ["engine", "displacement", "torque", "power", "transmission", "speed", "fuel", "km/l", "hp", "rpm", "output", "kw"]):
-            return "Engine, Drivetrain & Fuel Consumption"
-        if any(k in f_lower for k in ["suspension", "wheel", "tire", "brake", "steering"]):
-            return "Suspension, Steering, Brakes & Wheels"
-        if any(k in f_lower for k in ["headlight", "lamp", "mirror", "exterior", "grille", "sunroof"]):
-            return "Exterior Design, Lighting & Mirrors"
-        if any(k in f_lower for k in ["seat", "leather", "interior", "steering wheel", "material"]):
-            return "Interior Comfort, Seats & Materials"
-        if any(k in f_lower for k in ["ac", "air condition", "climate", "filter", "pm2.5"]):
-            return "AC, Climate Control & Cabin Comfort"
-        if any(k in f_lower for k in ["screen", "display", "bluetooth", "apple", "carplay", "android", "speaker", "usb"]):
-            return "Infotainment, Tech & Connectivity"
-        return "Safety, Airbags & Driver Assistance (ADAS)"
-
     try:
         xls = pd.ExcelFile(filepath)
         
-        # Phase 1: Build a global pool of real values for every single feature across all sheets (models)
-        global_feature_values = {}  
-        global_category_values = {}  
-        global_semantic_values = {g: set() for g in SEMANTIC_GROUPS.keys()}
-        parsed_sheets = []
+        # Structure to track: [Section] -> [Feature] -> Set of values
+        global_spec_database = {}
+        # Structure to track where distinct features are uniquely standard/available:
+        # [Feature Key] -> List of strings like "GAC EMPOW (GE 1.5TG)"
+        feature_availability_map = {}
         
+        parsed_sheets = []
+        all_model_trim_identities = [] # Used for generating model decoys
+
+        # PHASE 1: Scan and compile database across all sheets
         for sheet in xls.sheet_names:
             df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
             
             header_row_idx = 0
             for idx, row in df_raw.iterrows():
                 row_vals = [str(v).strip().lower() for v in row.values if pd.notna(v)]
-                non_empty_count = sum(1 for v in row_vals if v != "")
-                if non_empty_count <= 1:
+                if len([v for v in row_vals if v != ""]) <= 1:
                     continue
                 if any('feature' in r or 'specification' in r for r in row_vals):
                     header_row_idx = idx
@@ -245,191 +158,202 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             
             df = pd.read_excel(filepath, sheet_name=sheet, skiprows=header_row_idx)
             
-            feat_col = None
-            for col in df.columns:
-                if 'feature' in str(col).lower() or 'specification' in str(col).lower():
-                    feat_col = col
-                    break
-            if not feat_col:
-                feat_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-                
-            cat_col = df.columns[0]
-            trim_cols = [c for c in df.columns if c != feat_col and c != cat_col and not str(c).startswith('Unnamed')]
+            feat_col = next((c for c in df.columns if 'feature' in str(c).lower() or 'specification' in str(c).lower()), df.columns[0])
+            trim_cols = [c for c in df.columns if c != feat_col and not str(c).startswith('Unnamed')]
             
             parsed_sheets.append({
-                "sheet_name": sheet,
+                "sheet_name": sheet.strip(),
                 "df": df,
                 "feat_col": feat_col,
                 "trim_cols": trim_cols
             })
             
-            # Map values globally
+            current_section = "GENERAL"
+            
             for _, row in df.iterrows():
-                feature = row.get(feat_col)
-                if pd.isna(feature) or str(feature).strip() == "" or str(feature).startswith('MAIN TECHNICAL'):
+                feature_raw = row.get(feat_col)
+                if pd.isna(feature_raw):
                     continue
                 
-                feat_name = str(feature).strip()
-                feat_key = feat_name.lower()
-                cat_name = map_to_category(feat_name)
-                subgroup = get_semantic_subgroup(feat_name)
+                feature_str = str(feature_raw).strip()
+                if feature_str == "" or feature_str.startswith('MAIN TECHNICAL'):
+                    continue
                 
-                if feat_key not in global_feature_values:
-                    global_feature_values[feat_key] = set()
-                if cat_name not in global_category_values:
-                    global_category_values[cat_name] = set()
+                # Check for section separator row
+                trim_values = [row[t] for t in trim_cols if pd.notna(row[t])]
+                if len(trim_values) == 0:
+                    current_section = normalize_header(feature_str)
+                    continue
+                
+                if current_section not in global_spec_database:
+                    global_spec_database[current_section] = {}
+                
+                feat_key = feature_str.lower()
+                if feat_key not in global_spec_database[current_section]:
+                    global_spec_database[current_section][feat_key] = set()
+                if feat_key not in feature_availability_map:
+                    feature_availability_map[feat_key] = []
                     
                 for trim in trim_cols:
                     val = row[trim]
+                    model_trim_name = f"GAC {sheet.strip()} ({trim.strip()})"
+                    if model_trim_name not in all_model_trim_identities:
+                        all_model_trim_identities.append(model_trim_name)
+                        
                     if pd.notna(val):
                         val_str = str(val).strip()
-                        if val_str not in ['●', '○', '■', '-', '•', 'nan', 'NaN', '']:
-                            global_feature_values[feat_key].add(val_str)
-                            global_category_values[cat_name].add(val_str)
-                            if subgroup:
-                                global_semantic_values[subgroup].add(val_str)
+                        # If cell is not empty or hyphen, it means it is a feature or standard
+                        if val_str not in ['-', '', 'nan', 'NaN']:
+                            global_spec_database[current_section][feat_key].add(val_str)
+                            # Record that this specific model/trim features it
+                            if val_str in ['●', '•', 'yes', 'Yes', 'Standard'] or len(val_str) > 2:
+                                feature_availability_map[feat_key].append(model_trim_name)
 
-        # Phase 2: Generate highly competitive questions using global pools
+        # PHASE 2: Core Balanced Engine Generation
         for p in parsed_sheets:
             sheet_name = p["sheet_name"]
             df = p["df"]
             feat_col = p["feat_col"]
             trim_cols = p["trim_cols"]
             
+            current_section = "GENERAL"
+            
             for _, row in df.iterrows():
-                feature = row.get(feat_col)
-                if pd.isna(feature) or str(feature).strip() == "" or str(feature).startswith('MAIN TECHNICAL'):
+                feature_raw = row.get(feat_col)
+                if pd.isna(feature_raw):
                     continue
                 
-                feature_str = str(feature).strip()
-                feat_key = feature_str.lower()
-                category = map_to_category(feature_str)
-                subgroup = get_semantic_subgroup(feature_str)
+                feature_str = str(feature_raw).strip()
+                if feature_str == "" or feature_str.startswith('MAIN TECHNICAL'):
+                    continue
                 
-                # Check if it is a Yes/No (Binary) feature
+                trim_values = [row[t] for t in trim_cols if pd.notna(row[t])]
+                if len(trim_values) == 0:
+                    current_section = normalize_header(feature_str)
+                    continue
+                
+                feat_key = feature_str.lower()
+                
+                # Identify if binary (Yes/No standard feature)
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
                 is_binary_feature = all(v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'not available', 'n/a', ''] for v in all_trim_values)
                 
                 for trim in trim_cols:
                     val_check = row[trim]
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
+                    current_model_trim = f"GAC {sheet_name} ({trim.strip()})"
                     
+                    # ------------------------------------------------------------------
+                    # CASE A: THE NEW INVERTED QUESTION TYPE ("Which model has this?")
+                    # Generated for specific premium upgrades or descriptive items
+                    # ------------------------------------------------------------------
+                    if not is_binary_feature and raw_val not in ['-', '', 'nan', 'NaN'] and random.random() > 0.5:
+                        clean_spec = get_base_specification(raw_val)
+                        
+                        q_text = f"Which GAC model and variant features the following specification: '{clean_spec}' under '{feature_str}'?"
+                        correct_ans = current_model_trim
+                        
+                        # Gather actual other cars as decoys
+                        model_decoys = [m for m in all_model_trim_identities if m != correct_ans]
+                        # Prioritize cars that DON'T share this exact value string
+                        strict_decoys = [m for m in model_decoys if m not in feature_availability_map.get(feat_key, [])]
+                        
+                        if len(strict_decoys) >= 3:
+                            chosen_decoys = random.sample(strict_decoys, 3)
+                        else:
+                            chosen_decoys = random.sample(model_decoys, 3) if len(model_decoys) >= 3 else model_decoys
+                            
+                        options = [correct_ans] + chosen_decoys
+                        random.shuffle(options)
+                        
+                        generated_pool.append({
+                            "id": f"auto_model_hunt_{question_id_counter}",
+                            "category": current_section,
+                            "question": q_text,
+                            "options": options,
+                            "correct": correct_ans
+                        })
+                        question_id_counter += 1
+                        continue
+
+                    # ------------------------------------------------------------------
+                    # CASE B: BINARY SELECTION -> CHANGED TO CLEAN YES OR NO QUESTIONS
+                    # ------------------------------------------------------------------
                     if is_binary_feature:
                         if raw_val in ['●', '•', 'yes', 'Yes', 'Standard']:
-                            correct_val = "Yes, Standard"
+                            correct_val = "Yes"
                         else:
-                            correct_val = "Not Available"
+                            correct_val = "No"
                             
-                        q_text = f"Is the '{feature_str}' feature available as standard on the GAC {sheet_name.strip()} ({trim.strip()})?"
-                        options = ["Yes, Standard", "Not Available", "Optional Feature", "Available in Premium Packages Only"]
+                        q_text = f"Is the '{feature_str}' feature available as standard on the {current_model_trim}?"
+                        options = ["Yes", "No"]
                         
+                        generated_pool.append({
+                            "id": f"auto_binary_{question_id_counter}",
+                            "category": current_section,
+                            "question": q_text,
+                            "options": options,
+                            "correct": correct_val
+                        })
+                        question_id_counter += 1
+                    
+                    # ------------------------------------------------------------------
+                    # CASE C: STANDARD SPECIFICATION VALUES QUESTIONS
+                    # ------------------------------------------------------------------
                     else:
-                        # Technical Specification value!
                         correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
-                        q_text = f"What is the '{feature_str}' for the GAC {sheet_name.strip()} ({trim.strip()})?"
+                        q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
                         
-                        # Set up the Deduplication and Format Matching system
                         correct_base = get_base_specification(correct_val)
                         correct_digits = extract_only_digits(correct_base)
                         correct_has_digits = any(c.isdigit() for c in correct_base)
                         
-                        seen_simplified_texts = {correct_base.lower()}
-                        seen_digit_sequences = {correct_digits} if correct_digits else set()
+                        seen_texts = {correct_base.lower()}
+                        seen_digits = {correct_digits} if correct_digits else set()
                         
-                        raw_wrong_choices = set()
-                        
-                        # STEP 1: Strict Semantic Subgroup Isolation
-                        if subgroup:
-                            for g_val in global_semantic_values[subgroup]:
-                                raw_wrong_choices.add(g_val)
-                            for db_decoy in SEMANTIC_GROUPS[subgroup]["decoys"]:
-                                raw_wrong_choices.add(db_decoy)
-                        else:
-                            if feat_key in global_feature_values:
-                                for g_val in global_feature_values[feat_key]:
-                                    raw_wrong_choices.add(g_val)
-                            
-                            if len(raw_wrong_choices) < 5 and category in global_category_values:
-                                for cat_val in global_category_values[category]:
-                                    raw_wrong_choices.add(cat_val)
-
-                        # Clean, deduplicate, and enforce format & contextual-matching
-                        selected_wrongs = []
-                        for raw_w in raw_wrong_choices:
-                            w_base = get_base_specification(raw_w)
-                            w_digits = extract_only_digits(w_base)
-                            
-                            if w_base == "" or w_base.lower() in seen_simplified_texts:
-                                continue
-                            if w_digits and w_digits in seen_digit_sequences:
-                                continue
+                        raw_wrongs = set()
+                        if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
+                            for val_v in global_spec_database[current_section][feat_key]:
+                                raw_wrongs.add(val_v)
                                 
-                            # 1. Broad Format matching check (numbers vs text)
-                            w_has_digits = any(c.isdigit() for c in w_base)
-                            if correct_has_digits != w_has_digits:
+                        if len(raw_wrongs) < 4 and current_section in global_spec_database:
+                            for fk, val_set in global_spec_database[current_section].items():
+                                for f_val in val_set:
+                                    raw_wrongs.add(f_val)
+
+                        selected_wrongs = []
+                        for rw in raw_wrongs:
+                            w_base = get_base_specification(rw)
+                            w_dig = extract_only_digits(w_base)
+                            
+                            if w_base == "" or w_base.lower() in seen_texts:
+                                continue
+                            if w_dig and w_dig in seen_digits:
+                                continue
+                            if correct_has_digits != any(c.isdigit() for c in w_base):
                                 continue  
                                 
-                            # 2. STRICT CONTEXTUAL GUARD (Prevents cross-contamination of units/concepts)
-                            if not is_contextually_compatible(feature_str, correct_base, w_base):
-                                continue
-                                
-                            # 3. Substring overlap checker
-                            overlapping = False
-                            for seen in seen_simplified_texts:
-                                if w_base.lower() in seen or seen in w_base.lower():
-                                    overlapping = True
-                                    break
-                            if overlapping:
-                                continue
-                                
-                            seen_simplified_texts.add(w_base.lower())
-                            if w_digits:
-                                seen_digit_sequences.add(w_digits)
+                            seen_texts.add(w_base.lower())
+                            if w_dig:
+                                seen_digits.add(w_dig)
                             selected_wrongs.append(w_base)
                         
-                        # Select top 3 cleanest distractors
                         final_wrongs = selected_wrongs[:3]
-                        
-                        # If we have too few options because of strict filtering, generate targeted context fallbacks
                         while len(final_wrongs) < 3:
-                            if "max speed" in feature_str.lower() or "km/h" in feature_str.lower():
-                                fallback_speeds = ["160", "175", "190", "200", "210"]
-                                random.shuffle(fallback_speeds)
-                                for f_spd in fallback_speeds:
-                                    if f_spd not in seen_simplified_texts:
-                                        final_wrongs.append(f_spd)
-                                        seen_simplified_texts.add(f_spd)
-                                        break
-                            elif any(k in feature_str.lower() for k in ["dashboard", "screen", "display", "instrument"]):
-                                fallback_screens = ["7-inch LCD Instrument", "12.3-inch Full Color Display", "14.6-inch Touchscreen", "8-inch Digital Cluster"]
-                                random.shuffle(fallback_screens)
-                                for f_scr in fallback_screens:
-                                    if f_scr.lower() not in seen_simplified_texts:
-                                        final_wrongs.append(f_scr)
-                                        seen_simplified_texts.add(f_scr.lower())
-                                        break
-                            else:
-                                if not correct_has_digits and "not available" not in seen_simplified_texts:
-                                    final_wrongs.append("Not Available")
-                                    seen_simplified_texts.add("not available")
-                                else:
-                                    final_wrongs.append(f"Alternative Spec {len(final_wrongs) + 1}")
+                            final_wrongs.append("Not Available" if "not available" not in seen_texts else f"Alternative Option {len(final_wrongs)+1}")
                         
-                        # Combine clean correct answer with clean wrong answers
                         options = [correct_base] + final_wrongs[:3]
-                    
-                    # Shuffle options
-                    random.shuffle(options)
-                    
-                    generated_pool.append({
-                        "id": f"auto_{sheet_name.strip().lower().replace(' ', '_')}_{question_id_counter}",
-                        "category": category,
-                        "question": q_text,
-                        "options": options,
-                        "correct": correct_base if not is_binary_feature else correct_val
-                    })
-                    question_id_counter += 1
-                    
+                        random.shuffle(options)
+                        
+                        generated_pool.append({
+                            "id": f"auto_spec_{question_id_counter}",
+                            "category": current_section,
+                            "question": q_text,
+                            "options": options,
+                            "correct": correct_base
+                        })
+                        question_id_counter += 1
+                        
     except Exception as e:
         return []
 
