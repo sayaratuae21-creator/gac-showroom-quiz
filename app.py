@@ -523,7 +523,12 @@ else:
             user_answers = {}
             for idx, q in enumerate(st.session_state.current_quiz_set):
                 st.markdown(f"**Q{idx+1}: {q['question']}**")
-                user_answers[idx] = st.radio("Select choice:", q['options'], key=f"dyn_q_{idx}")
+                user_choice = st.radio(
+    "Select choice:", 
+    options=q['options'], 
+    index=None, 
+    key=f"radio_{idx}"
+)
                 st.markdown("")
                 
             submit_round = st.form_submit_button("Submit Answers")
@@ -564,6 +569,14 @@ else:
             st.markdown("---")
             
         st.info("Your results are saved directly to your cloud history. You will never see these 5 questions again in this cycle!")
-        if st.button("Start Another Quiz Immediately"):
-            generate_user_round(st.session_state.current_user)
-            st.rerun()
+        # In your "Submit Answers" section:
+if st.button("Submit Answers"):
+    # Check if any questions were left empty
+    if None in user_answers:
+        st.warning("⚠️ Please answer all questions before submitting!")
+    else:
+        # Your existing scoring loop runs perfectly here...
+        score = 0
+        for idx, q in enumerate(st.session_state.quiz_questions):
+            if user_answers[idx] == q['answer']:
+                score += 1
