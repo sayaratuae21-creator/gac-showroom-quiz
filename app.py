@@ -122,6 +122,11 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     def generate_close_digits_decoys(feature_name, original_text):
         """Finds numbers within the text answer and creates realistic variations, with specific automotive overrides."""
+        # Custom suspension type overrides to ensure high-quality, professional distractions
+        if "suspension" in feature_name.lower():
+            all_suspensions = ["Multi-Link", "Air Suspension", "Rigid Axle Suspension", "Adaptive/Electronic Suspension"]
+            return [s for s in all_suspensions if s.lower() not in original_text.lower()][:3]
+
         if "drivetrain" in feature_name.lower() or "drive type" in feature_name.lower():
             all_types = ["FWD", "RWD", "AWD", "4WD"]
             return [t for t in all_types if t.lower() not in original_text.lower()][:3]
@@ -303,7 +308,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 continue
                             decoy_val = feature_to_model_value_map.get(feat_key, {}).get(m_identity, "")
                             if decoy_val.lower() == clean_spec.lower():
-                                continue # Skip models sharing identical displacement / specs
+                                continue 
                             model_decoys.append(m_identity)
                             
                         if len(model_decoys) >= 3:
@@ -341,10 +346,17 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     for rw in raw_wrongs:
                         w_base = get_base_specification(rw)
                         w_dig = extract_only_digits(w_base)
+                        
                         if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
                             continue
                         if correct_has_digits != any(c.isdigit() for c in w_base):
                             continue  
+                        
+                        # --- KEYWORD OVERLAP FILTER (STOPS REPEATED MEANINGS) ---
+                        correct_words = set(re.findall(r'\w{4,}', correct_base.lower()))
+                        decoy_words = set(re.findall(r'\w{4,}', w_base.lower()))
+                        if correct_words.intersection(decoy_words):
+                            continue  # Skip decoys that share major words like "McPherson" or "Independent"
                             
                         seen_texts.add(w_base.lower())
                         if w_dig:
@@ -353,7 +365,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     
                     final_wrongs = selected_wrongs[:3]
                     
-                    if len(final_wrongs) < 3 or "drivetrain" in feature_str.lower() or "drive type" in feature_str.lower():
+                    # Force-inject preferred suspension options for any suspension related query
+                    if len(final_wrongs) < 3 or "suspension" in feature_str.lower() or "drivetrain" in feature_str.lower() or "drive type" in feature_str.lower():
                         numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
                         for d_item in numeric_decoys:
                             if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
