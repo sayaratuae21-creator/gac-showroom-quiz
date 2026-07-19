@@ -124,7 +124,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         """Finds numbers within the text answer and creates realistic numeric variations."""
         numbers = re.findall(r'\d+\.\d+|\d+', original_text)
         if not numbers:
-            # Fallback if no digits exist
             return [f"{original_text} Edition", f"Premium {original_text}", f"Standard {original_text}"]
             
         decoys = set()
@@ -135,13 +134,11 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             for num_str in numbers:
                 if '.' in num_str:
                     val = float(num_str)
-                    # Small variation for floats
                     offset = random.choice([0.1, 0.2, 0.3, -0.1, -0.2, -0.3])
                     new_val = round(max(0.5, val + offset), 1)
                     altered_text = altered_text.replace(num_str, str(new_val), 1)
                 else:
                     val = int(num_str)
-                    # Pick an intelligent delta step based on magnitude
                     if val > 2000:
                         delta = random.choice([50, 100, 150, -50, -100, -150])
                     elif val > 500:
@@ -157,7 +154,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             if altered_text != original_text and altered_text not in decoys:
                 decoys.add(altered_text)
                 
-        # Fill remaining slots with basic fallback modifiers if loop didn't finish
         while len(decoys) < 3:
             decoys.add(f"{original_text} (Alt {len(decoys)+1})")
             
@@ -260,16 +256,27 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     val_check = row[trim]
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     
-                    # Guard: If raw value itself is missing/not available, skip generating a question for it
                     if raw_val in ['-', '', 'nan', 'NaN', 'Not Available', 'Not available', 'n/a', 'N/A']:
                         continue
                         
-                    current_model_trim = f"GAC {sheet_name} ({trim.strip()})"
+                    # Model Clean Name (Handle nested layout cleanly)
+                    clean_trim = trim.strip()
+                    if clean_trim:
+                        model_label = f"{sheet_name.strip()} {clean_trim}"
+                    else:
+                        model_label = f"{sheet_name.strip()}"
+                        
+                    current_model_trim = f"GAC {model_label}"
                     
-                    # TYPE A: YES/NO BINARY INTERFACES
+                    # TYPE A: YES/NO BINARY INTERFACES (UPDATED PHRASING MATCH)
                     if is_binary_feature:
                         correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
-                        q_text = f"Is the '{feature_str}' feature available as standard on the {current_model_trim}?"
+                        
+                        # Alternate sentence structure styles organically like the sample image
+                        if random.random() > 0.5:
+                            q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
+                        else:
+                            q_text = f"Does the {current_model_trim} include a {feature_str} as a standard feature?"
                         
                         pool_binary_yes_no.append({
                             "id": f"auto_binary_{question_id_counter}",
@@ -286,12 +293,11 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     if random.random() > 0.5:
                         clean_spec = get_base_specification(raw_val)
                         q_text = f"Which GAC model has a {feature_str} of {clean_spec}?"
-                        correct_ans = current_model_trim
+                        correct_ans = f"GAC {sheet_name.strip()} ({trim.strip()})"
                         
-                        model_decoys = [m for m in all_model_trim_identities if m != correct_ans]
-                        strict_decoys = [m for m in model_decoys if m not in feature_availability_map.get(feat_key, [])]
+                        model_decoys = [f"GAC {m}" for m in all_model_trim_identities if m != f"{sheet_name.strip()} ({trim.strip()})"]
+                        chosen_decoys = random.sample(model_decoys, 3) if len(model_decoys) >= 3 else model_decoys
                         
-                        chosen_decoys = random.sample(strict_decoys, 3) if len(strict_decoys) >= 3 else random.sample(model_decoys, 3)
                         options = [correct_ans] + chosen_decoys
                         random.shuffle(options)
                         
@@ -318,7 +324,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     raw_wrongs = set()
                     if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
                         for val_v in global_spec_database[current_section][feat_key]:
-                            # Filter out invalid entries from being decoys
                             if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a']:
                                 raw_wrongs.add(val_v)
                             
@@ -338,7 +343,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     
                     final_wrongs = selected_wrongs[:3]
                     
-                    # CRITICAL FIX: If database doesn't have 3 unique alternatives, auto-generate close digit variations!
                     if len(final_wrongs) < 3:
                         numeric_decoys = generate_close_digits_decoys(correct_base)
                         for d_item in numeric_decoys:
