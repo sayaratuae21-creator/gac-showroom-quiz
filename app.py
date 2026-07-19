@@ -122,10 +122,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     def generate_close_digits_decoys(feature_name, original_text):
         """Finds numbers within the text answer and creates realistic variations, with specific automotive overrides."""
-        # CRITICAL OVERRIDE: Check if it's a Drivetrain question to enforce absolute correct options
         if "drivetrain" in feature_name.lower() or "drive type" in feature_name.lower():
             all_types = ["FWD", "RWD", "AWD", "4WD"]
-            # Filter down to the types that do not match the correct answer
             return [t for t in all_types if t.lower() not in original_text.lower()][:3]
 
         numbers = re.findall(r'\d+\.\d+|\d+', original_text)
@@ -168,7 +166,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     try:
         xls = pd.ExcelFile(filepath)
         global_spec_database = {}
-        feature_availability_map = {}
+        feature_to_model_value_map = {} # Maps feat_key -> { model_trim_name -> base_value }
         parsed_sheets = []
         all_model_trim_identities = []
 
@@ -216,8 +214,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 feat_key = feature_str.lower()
                 if feat_key not in global_spec_database[current_section]:
                     global_spec_database[current_section][feat_key] = set()
-                if feat_key not in feature_availability_map:
-                    feature_availability_map[feat_key] = []
+                if feat_key not in feature_to_model_value_map:
+                    feature_to_model_value_map[feat_key] = {}
                     
                 for trim in trim_cols:
                     val = row[trim]
@@ -229,8 +227,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         val_str = str(val).strip()
                         if val_str not in ['-', '', 'nan', 'NaN', 'Not Available', 'Not available', 'n/a', 'N/A']:
                             global_spec_database[current_section][feat_key].add(val_str)
-                            if val_str.lower() in ['●', '•', 'yes', 'standard'] or len(val_str) > 2:
-                                feature_availability_map[feat_key].append(model_trim_name)
+                            feature_to_model_value_map[feat_key][model_trim_name] = get_base_specification(val_str)
 
         # PHASE 2: Generate sorted question categorizations
         for p in parsed_sheets:
@@ -267,7 +264,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                     clean_trim = trim.strip()
                     if clean_trim:
-                        model_label = f"{sheet_name.strip()} {clean_trim}"
+                        model_label = f"{sheet_name.strip()} ({clean_trim})"
                     else:
                         model_label = f"{sheet_name.strip()}"
                         
@@ -293,32 +290,41 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
                     
-                    # TYPE B: INVERTED MODEL HUNT
+                    # TYPE B: INVERTED MODEL HUNT (WITH DUPLICATE VALUE FILTERING)
+                    clean_spec = get_base_specification(raw_val)
                     if random.random() > 0.5:
-                        clean_spec = get_base_specification(raw_val)
                         q_text = f"Which GAC model has a {feature_str} of {clean_spec}?"
-                        correct_ans = f"GAC {sheet_name.strip()} ({trim.strip()})"
+                        correct_ans = current_model_trim
                         
-                        model_decoys = [f"GAC {m}" for m in all_model_trim_identities if m != f"{sheet_name.strip()} ({trim.strip()})"]
-                        chosen_decoys = random.sample(model_decoys, 3) if len(model_decoys) >= 3 else model_decoys
-                        
-                        options = [correct_ans] + chosen_decoys
-                        random.shuffle(options)
-                        
-                        pool_technical_specs.append({
-                            "id": f"auto_model_hunt_{question_id_counter}",
-                            "category": current_section,
-                            "question": q_text,
-                            "options": options,
-                            "correct": correct_ans,
-                            "answer": correct_ans
-                        })
-                        question_id_counter += 1
-                        continue
+                        # Filter out any decoy models that share this EXACT same specification value
+                        model_decoys = []
+                        for m_identity in all_model_trim_identities:
+                            if m_identity == current_model_trim:
+                                continue
+                            decoy_val = feature_to_model_value_map.get(feat_key, {}).get(m_identity, "")
+                            if decoy_val.lower() == clean_spec.lower():
+                                continue # Skip models sharing identical displacement / specs
+                            model_decoys.append(m_identity)
+                            
+                        if len(model_decoys) >= 3:
+                            chosen_decoys = random.sample(model_decoys, 3)
+                            options = [correct_ans] + chosen_decoys
+                            random.shuffle(options)
+                            
+                            pool_technical_specs.append({
+                                "id": f"auto_model_hunt_{question_id_counter}",
+                                "category": current_section,
+                                "question": q_text,
+                                "options": options,
+                                "correct": correct_ans,
+                                "answer": correct_ans
+                            })
+                            question_id_counter += 1
+                            continue
 
                     # TYPE C: SPEC VALUE DETAILS
                     q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
-                    correct_base = get_base_specification(raw_val)
+                    correct_base = clean_spec
                     correct_digits = extract_only_digits(correct_base)
                     correct_has_digits = any(c.isdigit() for c in correct_base)
                     
@@ -347,7 +353,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     
                     final_wrongs = selected_wrongs[:3]
                     
-                    # Trigger the smart override function if choices are incomplete or require standard automotive logic
                     if len(final_wrongs) < 3 or "drivetrain" in feature_str.lower() or "drive type" in feature_str.lower():
                         numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
                         for d_item in numeric_decoys:
