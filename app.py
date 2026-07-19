@@ -236,10 +236,11 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
                     
-                    # TYPE B: INVERTED MODEL HUNT 
+                    # TYPE B: INVERTED MODEL HUNT (UPDATED PHRASING)
                     if raw_val not in ['-', '', 'nan', 'NaN'] and random.random() > 0.5:
                         clean_spec = get_base_specification(raw_val)
-                        q_text = f"Which GAC model and variant features the following specification: '{clean_spec}' under '{feature_str}'?"
+                        # Rewritten to remove "under" and match your exact clean format layout
+                        q_text = f"Which GAC model has a {feature_str} of {clean_spec}?"
                         correct_ans = current_model_trim
                         
                         model_decoys = [m for m in all_model_trim_identities if m != correct_ans]
