@@ -577,6 +577,11 @@ if st.button("Submit Answers"):
     else:
         # Your existing scoring loop runs perfectly here...
         score = 0
-        for idx, q in enumerate(st.session_state.quiz_questions):
+        # Check if quiz_questions actually exists in session state first
+if "quiz_questions" in st.session_state and st.session_state.quiz_questions:
+    for idx, q in enumerate(st.session_state.quiz_questions):
+        # ... your existing code inside the loop goes here ...
+else:
+    st.info("🔄 Loading quiz pool... Please refresh or start a new quiz session.")
             if user_answers[idx] == q['answer']:
                 score += 1
