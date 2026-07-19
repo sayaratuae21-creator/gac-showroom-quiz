@@ -3,9 +3,12 @@ import pandas as pd
 import requests
 import json
 import random
+import re
+import copy
 
 # Set up page config
-st.set_page_config(page_title=" GAC – Product Learning ", layout="wide")
+st.set_page_config(page_title="GAC – Product Learning", layout="wide")
+
 # --- CUSTOM SIDEBAR & INPUT BOX STYLING ---
 st.markdown(
     """
@@ -42,6 +45,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
 
@@ -94,31 +98,15 @@ st.markdown(
 )
 
 # --- PERMANENT DATABASE CONFIG (JSONBin.io) ---
-# Paste your credentials here:
 BIN_ID = "6a55d6caf5f4af5e298c1651"
 API_KEY = "$2a$10$vJelScEkNfMQ2fA5Au5OrOgFYlZNy8KCgCBsaStqMSQ1tb4t8zn1y"
-
-# --- COMPREHENSIVE PRODUCT KNOWLEDGE POOL (100+ QUESTIONS) ---
-import streamlit as st
-import pandas as pd
-import random
-import copy
 
 # ==========================================================
 # 1. DYNAMIC EXCEL QUESTION GENERATOR
 # ==========================================================
-# This function automatically reads your uploaded "GIMINI SPECS.xlsx"
-# and builds a comprehensive question pool for all vehicle models.
-# ==========================================================
-import re
-import random
-import pandas as pd
-
 def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
-    # Two separate pools to guarantee a strict 2/5 (40%) Yes/No question ratio
     pool_binary_yes_no = []
     pool_technical_specs = []
-    
     question_id_counter = 1
     
     def normalize_header(header_str):
@@ -136,7 +124,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     try:
         xls = pd.ExcelFile(filepath)
-        
         global_spec_database = {}
         feature_availability_map = {}
         parsed_sheets = []
@@ -145,7 +132,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         # PHASE 1: Build cross-model references
         for sheet in xls.sheet_names:
             df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
-            
             header_row_idx = 0
             for idx, row in df_raw.iterrows():
                 row_vals = [str(v).strip().lower() for v in row.values if pd.notna(v)]
@@ -167,7 +153,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             })
             
             current_section = "GENERAL"
-            
             for _, row in df.iterrows():
                 feature_raw = row.get(feat_col)
                 if pd.isna(feature_raw):
@@ -210,7 +195,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             df = p["df"]
             feat_col = p["feat_col"]
             trim_cols = p["trim_cols"]
-            
             current_section = "GENERAL"
             
             for _, row in df.iterrows():
@@ -236,7 +220,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
                     current_model_trim = f"GAC {sheet_name} ({trim.strip()})"
                     
-                    # TYPE A: YES/NO BINARY INTERFACES (Mapped to separate collection)
+                    # TYPE A: YES/NO BINARY INTERFACES
                     if is_binary_feature:
                         correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
                         q_text = f"Is the '{feature_str}' feature available as standard on the {current_model_trim}?"
@@ -247,7 +231,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             "question": q_text,
                             "options": ["Yes", "No"],
                             "correct": correct_val,
-                            "answer": correct_val  # Added to prevent KeyError on submission
+                            "answer": correct_val
                         })
                         question_id_counter += 1
                         continue
@@ -271,7 +255,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             "question": q_text,
                             "options": options,
                             "correct": correct_ans,
-                            "answer": correct_ans  # Added to prevent KeyError on submission
+                            "answer": correct_ans
                         })
                         question_id_counter += 1
                         continue
@@ -319,22 +303,18 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         "question": q_text,
                         "options": options,
                         "correct": correct_base,
-                        "answer": correct_base  # Added to prevent KeyError on submission
+                        "answer": correct_base
                     })
                     question_id_counter += 1
 
-        # ------------------------------------------------------------------
-        # PHASE 3: STRICT 2/5 (40%) YES/NO BALANCE MIXER
-        # ------------------------------------------------------------------
-        # Total number of questions your app shows per test session (Adjust if your test length is different)
+        # PHASE 3: STRICT 2/5 (40%) BALANCE MIXER
         TOTAL_QUIZ_SIZE = 10 
-        target_binary_count = int(TOTAL_QUIZ_SIZE * (2 / 5)) # Exactly 4
-        target_tech_count = TOTAL_QUIZ_SIZE - target_binary_count # Exactly 6
+        target_binary_count = int(TOTAL_QUIZ_SIZE * (2 / 5)) 
+        target_tech_count = TOTAL_QUIZ_SIZE - target_binary_count 
 
         random.shuffle(pool_binary_yes_no)
         random.shuffle(pool_technical_specs)
 
-        # Slice precisely to match the percentage constraints
         final_pool = (
             pool_binary_yes_no[:target_binary_count] + 
             pool_technical_specs[:target_tech_count]
@@ -344,8 +324,10 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     except Exception as e:
         return []
-        # Load the dynamic pool into memory
+
+# Load the dynamic pool into memory
 MASTER_QUESTION_POOL = load_questions_from_excel()
+
 # --- DATABASE LOAD / SAVE FUNCTIONS ---
 def load_global_db():
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
@@ -360,7 +342,6 @@ def load_global_db():
 
 def update_db_on_submission(name, score_to_add, total_added, completed_q_ids):
     db = load_global_db()
-    
     if "test_user" in db:
         del db["test_user"]
         
@@ -370,7 +351,6 @@ def update_db_on_submission(name, score_to_add, total_added, completed_q_ids):
     db[name]["correct"] += score_to_add
     db[name]["attempted"] += total_added
     
-    # Track which questions they have answered permanently
     if "seen_ids" not in db[name]:
         db[name]["seen_ids"] = []
     
@@ -406,13 +386,10 @@ def generate_user_round(username):
     user_record = db.get(username, {})
     seen_ids = user_record.get("seen_ids", [])
     
-    # Filter out questions this user has already answered in past sessions
     available_pool = [q for q in MASTER_QUESTION_POOL if q["id"] not in seen_ids]
     
-    # If the user has already answered all questions in the pool, reset their deck so they can practice again!
     if len(available_pool) < 5:
         available_pool = list(MASTER_QUESTION_POOL)
-        # Clear database tracking list to start fresh
         if username in db:
             db[username]["seen_ids"] = []
             requests.put(f"https://api.jsonbin.io/v3/b/{BIN_ID}", json=db, headers={"Content-Type": "application/json", "X-Master-Key": API_KEY})
@@ -424,7 +401,6 @@ def generate_user_round(username):
         original_q = available_pool.pop(0)
         q_copy = dict(original_q)
         
-        # Randomly shuffle option choices so correct answer is NOT always choice #1
         shuffled_options = list(q_copy["options"])
         random.shuffle(shuffled_options)
         q_copy["options"] = shuffled_options
@@ -434,8 +410,6 @@ def generate_user_round(username):
     st.session_state.current_quiz_set = round_questions
     st.session_state.quiz_submitted = False
     st.session_state.saved_answers = {}
-    
-    # Calculate how many questions are left in their personal database pool
     st.session_state.user_unseen_deck = [q for q in MASTER_QUESTION_POOL if q["id"] not in seen_ids]
 
 # --- HEADER UI ---
@@ -459,7 +433,6 @@ with st.sidebar:
     else:
         st.success(f"Active Session: **{st.session_state.current_user}**")
         
-        # Accurately show how many unique questions they have left to practice
         total_qs = len(MASTER_QUESTION_POOL)
         remaining = len(st.session_state.user_unseen_deck)
         st.caption(f"📦 Unique Questions remaining in your database: **{remaining} / {total_qs}**")
@@ -521,34 +494,47 @@ else:
             
         with st.form("dynamic_quiz_form"):
             user_answers = {}
-            for idx, q in enumerate(st.session_state.current_quiz_set):
-                st.markdown(f"**Q{idx+1}: {q['question']}**")
-                user_choice = st.radio(
-    "Select choice:", 
-    options=q['options'], 
-    index=None, 
-    key=f"radio_{idx}"
-)
-                st.markdown("")
+            
+            # Safe Loop Check to prevent initialization crashes
+            if "current_quiz_set" in st.session_state and st.session_state.current_quiz_set:
+                for idx, q in enumerate(st.session_state.current_quiz_set):
+                    st.markdown(f"**Q{idx+1}: {q['question']}**")
+                    
+                    # Renders empty with index=None and tracks choices into user_answers dict
+                    user_answers[idx] = st.radio(
+                        "Select choice:", 
+                        options=q['options'], 
+                        index=None, 
+                        key=f"radio_{idx}"
+                    )
+                    st.markdown("")
+            else:
+                st.info("🔄 Loading quiz pool... Please refresh or start a new quiz session.")
                 
             submit_round = st.form_submit_button("Submit Answers")
             
             if submit_round:
-                correct_count = 0
-                completed_ids = []
-                st.session_state.saved_answers = {idx: user_answers.get(idx, None) for idx in range(len(st.session_state.quiz_questions))}
-                
-                for idx, q in enumerate(st.session_state.current_quiz_set):
-                    completed_ids.append(q["id"])
-                    if user_answers[idx] == q['answer']:
-                        correct_count += 1
-                
-                # Permanently update the score and save these seen questions to the DB
-                update_db_on_submission(st.session_state.current_user, correct_count, len(st.session_state.current_quiz_set), completed_ids)
-                st.session_state.session_correct = correct_count
-                st.session_state.quiz_submitted = True
-                st.rerun()
-                
+                # Validation Guard: Block submission if any question has index=None (unanswered)
+                if None in user_answers.values() or len(user_answers) < len(st.session_state.current_quiz_set):
+                    st.error("⚠️ Please answer all questions on the screen before submitting!")
+                else:
+                    correct_count = 0
+                    completed_ids = []
+                    
+                    # Safely map answers to avoid KeyErrors
+                    st.session_state.saved_answers = {idx: user_answers.get(idx, None) for idx in range(len(st.session_state.current_quiz_set))}
+                    
+                    for idx, q in enumerate(st.session_state.current_quiz_set):
+                        completed_ids.append(q["id"])
+                        if user_answers.get(idx, None) == q['answer']:
+                            correct_count += 1
+                    
+                    # Update score database
+                    update_db_on_submission(st.session_state.current_user, correct_count, len(st.session_state.current_quiz_set), completed_ids)
+                    st.session_state.session_correct = correct_count
+                    st.session_state.quiz_submitted = True
+                    st.rerun()
+                    
     # CASE 2: RESULTS SUBMITTED (SHOW CORRECTIONS)
     else:
         st.balloons()
@@ -556,12 +542,11 @@ else:
         st.markdown("### 🔍 Answer Review & Instant Training Feedback:")
         
         for idx, q in enumerate(st.session_state.current_quiz_set):
-            user_ans = st.session_state.saved_answers.get(idx)
+            user_ans = st.session_state.saved_answers.get(idx, "No Answer Given")
             correct_ans = q['answer']
             is_correct = (user_ans == correct_ans)
             
             st.markdown(f"**Q{idx+1}: {q['question']}**")
-            
             if is_correct:
                 st.success(f"🟢 **Correct!** You selected: **{user_ans}**")
             else:
@@ -569,19 +554,3 @@ else:
             st.markdown("---")
             
         st.info("Your results are saved directly to your cloud history. You will never see these 5 questions again in this cycle!")
-        # In your "Submit Answers" section:
-if st.button("Submit Answers"):
-    # Check if any questions were left empty
-    if None in user_answers:
-        st.warning("⚠️ Please answer all questions before submitting!")
-    else:
-        # Your existing scoring loop runs perfectly here...
-        score = 0
-        # Check if quiz_questions actually exists in session state first
-if "quiz_questions" in st.session_state and st.session_state.quiz_questions:
-    for idx, q in enumerate(st.session_state.quiz_questions):
-        # ... your existing code inside the loop goes here ...
-else:
-    st.info("🔄 Loading quiz pool... Please refresh or start a new quiz session.")
-            if user_answers[idx] == q['answer']:
-                score += 1
