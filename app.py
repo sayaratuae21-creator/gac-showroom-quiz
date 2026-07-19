@@ -120,8 +120,14 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
     def extract_only_digits(val_str):
         return "".join(re.findall(r'\d+', str(val_str)))
 
-    def generate_close_digits_decoys(original_text):
-        """Finds numbers within the text answer and creates realistic numeric variations."""
+    def generate_close_digits_decoys(feature_name, original_text):
+        """Finds numbers within the text answer and creates realistic variations, with specific automotive overrides."""
+        # CRITICAL OVERRIDE: Check if it's a Drivetrain question to enforce absolute correct options
+        if "drivetrain" in feature_name.lower() or "drive type" in feature_name.lower():
+            all_types = ["FWD", "RWD", "AWD", "4WD"]
+            # Filter down to the types that do not match the correct answer
+            return [t for t in all_types if t.lower() not in original_text.lower()][:3]
+
         numbers = re.findall(r'\d+\.\d+|\d+', original_text)
         if not numbers:
             return [f"{original_text} Edition", f"Premium {original_text}", f"Standard {original_text}"]
@@ -259,7 +265,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     if raw_val in ['-', '', 'nan', 'NaN', 'Not Available', 'Not available', 'n/a', 'N/A']:
                         continue
                         
-                    # Model Clean Name (Handle nested layout cleanly)
                     clean_trim = trim.strip()
                     if clean_trim:
                         model_label = f"{sheet_name.strip()} {clean_trim}"
@@ -268,11 +273,10 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                     current_model_trim = f"GAC {model_label}"
                     
-                    # TYPE A: YES/NO BINARY INTERFACES (UPDATED PHRASING MATCH)
+                    # TYPE A: YES/NO BINARY INTERFACES
                     if is_binary_feature:
                         correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
                         
-                        # Alternate sentence structure styles organically like the sample image
                         if random.random() > 0.5:
                             q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
                         else:
@@ -343,8 +347,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     
                     final_wrongs = selected_wrongs[:3]
                     
-                    if len(final_wrongs) < 3:
-                        numeric_decoys = generate_close_digits_decoys(correct_base)
+                    # Trigger the smart override function if choices are incomplete or require standard automotive logic
+                    if len(final_wrongs) < 3 or "drivetrain" in feature_str.lower() or "drive type" in feature_str.lower():
+                        numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
                         for d_item in numeric_decoys:
                             if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
                                 final_wrongs.append(d_item)
