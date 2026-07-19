@@ -536,7 +536,7 @@ else:
             if submit_round:
                 correct_count = 0
                 completed_ids = []
-                st.session_state.saved_answers = {idx: user_answers[idx] for idx in range(len(st.session_state.current_quiz_set))}
+                st.session_state.saved_answers = {idx: user_answers.get(idx, None) for idx in range(len(st.session_state.quiz_questions))}
                 
                 for idx, q in enumerate(st.session_state.current_quiz_set):
                     completed_ids.append(q["id"])
