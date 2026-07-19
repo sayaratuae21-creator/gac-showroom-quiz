@@ -79,14 +79,12 @@ st.markdown(
     }}
     
     /* --- TABLE CUSTOMIZATION FOR CONTRAST & CENTERING --- */
-    /* Force table header text to be dark, bold, and perfectly centered */
     th {{
         color: #111111 !important;
         font-weight: bold !important;
         text-align: center !important;
         font-size: 1rem !important;
     }}
-    /* Force all table cells (including numbers) to center-align and have better contrast */
     td {{
         color: #222222 !important;
         text-align: center !important;
@@ -121,6 +119,49 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     def extract_only_digits(val_str):
         return "".join(re.findall(r'\d+', str(val_str)))
+
+    def generate_close_digits_decoys(original_text):
+        """Finds numbers within the text answer and creates realistic numeric variations."""
+        numbers = re.findall(r'\d+\.\d+|\d+', original_text)
+        if not numbers:
+            # Fallback if no digits exist
+            return [f"{original_text} Edition", f"Premium {original_text}", f"Standard {original_text}"]
+            
+        decoys = set()
+        attempts = 0
+        while len(decoys) < 3 and attempts < 40:
+            attempts += 1
+            altered_text = original_text
+            for num_str in numbers:
+                if '.' in num_str:
+                    val = float(num_str)
+                    # Small variation for floats
+                    offset = random.choice([0.1, 0.2, 0.3, -0.1, -0.2, -0.3])
+                    new_val = round(max(0.5, val + offset), 1)
+                    altered_text = altered_text.replace(num_str, str(new_val), 1)
+                else:
+                    val = int(num_str)
+                    # Pick an intelligent delta step based on magnitude
+                    if val > 2000:
+                        delta = random.choice([50, 100, 150, -50, -100, -150])
+                    elif val > 500:
+                        delta = random.choice([20, 30, 50, -20, -30, -50])
+                    elif val > 100:
+                        delta = random.choice([10, 15, 20, -10, -15, -20])
+                    else:
+                        delta = random.choice([2, 5, 8, -2, -5, -8])
+                    
+                    new_val = max(0, val + delta)
+                    altered_text = altered_text.replace(num_str, str(new_val), 1)
+            
+            if altered_text != original_text and altered_text not in decoys:
+                decoys.add(altered_text)
+                
+        # Fill remaining slots with basic fallback modifiers if loop didn't finish
+        while len(decoys) < 3:
+            decoys.add(f"{original_text} (Alt {len(decoys)+1})")
+            
+        return list(decoys)
 
     try:
         xls = pd.ExcelFile(filepath)
@@ -184,7 +225,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                     if pd.notna(val):
                         val_str = str(val).strip()
-                        if val_str not in ['-', '', 'nan', 'NaN', 'Not Available']:
+                        if val_str not in ['-', '', 'nan', 'NaN', 'Not Available', 'Not available', 'n/a', 'N/A']:
                             global_spec_database[current_section][feat_key].add(val_str)
                             if val_str.lower() in ['●', '•', 'yes', 'standard'] or len(val_str) > 2:
                                 feature_availability_map[feat_key].append(model_trim_name)
@@ -218,6 +259,11 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 for trim in trim_cols:
                     val_check = row[trim]
                     raw_val = str(val_check).strip() if pd.notna(val_check) else ""
+                    
+                    # Guard: If raw value itself is missing/not available, skip generating a question for it
+                    if raw_val in ['-', '', 'nan', 'NaN', 'Not Available', 'Not available', 'n/a', 'N/A']:
+                        continue
+                        
                     current_model_trim = f"GAC {sheet_name} ({trim.strip()})"
                     
                     # TYPE A: YES/NO BINARY INTERFACES
@@ -236,10 +282,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
                     
-                    # TYPE B: INVERTED MODEL HUNT (UPDATED PHRASING)
-                    if raw_val not in ['-', '', 'nan', 'NaN'] and random.random() > 0.5:
+                    # TYPE B: INVERTED MODEL HUNT
+                    if random.random() > 0.5:
                         clean_spec = get_base_specification(raw_val)
-                        # Rewritten to remove "under" and match your exact clean format layout
                         q_text = f"Which GAC model has a {feature_str} of {clean_spec}?"
                         correct_ans = current_model_trim
                         
@@ -262,10 +307,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         continue
 
                     # TYPE C: SPEC VALUE DETAILS
-                    correct_val = raw_val if (raw_val != "" and raw_val.lower() not in ['nan', '-', 'no', 'n/a']) else "Not Available"
                     q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
-                    
-                    correct_base = get_base_specification(correct_val)
+                    correct_base = get_base_specification(raw_val)
                     correct_digits = extract_only_digits(correct_base)
                     correct_has_digits = any(c.isdigit() for c in correct_base)
                     
@@ -275,7 +318,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     raw_wrongs = set()
                     if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
                         for val_v in global_spec_database[current_section][feat_key]:
-                            raw_wrongs.add(val_v)
+                            # Filter out invalid entries from being decoys
+                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a']:
+                                raw_wrongs.add(val_v)
                             
                     selected_wrongs = []
                     for rw in raw_wrongs:
@@ -292,8 +337,13 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         selected_wrongs.append(w_base)
                     
                     final_wrongs = selected_wrongs[:3]
-                    while len(final_wrongs) < 3:
-                        final_wrongs.append("Not Available" if "not available" not in seen_texts else f"Alternative Option {len(final_wrongs)+1}")
+                    
+                    # CRITICAL FIX: If database doesn't have 3 unique alternatives, auto-generate close digit variations!
+                    if len(final_wrongs) < 3:
+                        numeric_decoys = generate_close_digits_decoys(correct_base)
+                        for d_item in numeric_decoys:
+                            if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
+                                final_wrongs.append(d_item)
                     
                     options = [correct_base] + final_wrongs[:3]
                     random.shuffle(options)
@@ -496,12 +546,10 @@ else:
         with st.form("dynamic_quiz_form"):
             user_answers = {}
             
-            # Safe Loop Check to prevent initialization crashes
             if "current_quiz_set" in st.session_state and st.session_state.current_quiz_set:
                 for idx, q in enumerate(st.session_state.current_quiz_set):
                     st.markdown(f"**Q{idx+1}: {q['question']}**")
                     
-                    # Renders empty with index=None and tracks choices into user_answers dict
                     user_answers[idx] = st.radio(
                         "Select choice:", 
                         options=q['options'], 
@@ -515,14 +563,12 @@ else:
             submit_round = st.form_submit_button("Submit Answers")
             
             if submit_round:
-                # Validation Guard: Block submission if any question has index=None (unanswered)
                 if None in user_answers.values() or len(user_answers) < len(st.session_state.current_quiz_set):
                     st.error("⚠️ Please answer all questions on the screen before submitting!")
                 else:
                     correct_count = 0
                     completed_ids = []
                     
-                    # Safely map answers to avoid KeyErrors
                     st.session_state.saved_answers = {idx: user_answers.get(idx, None) for idx in range(len(st.session_state.current_quiz_set))}
                     
                     for idx, q in enumerate(st.session_state.current_quiz_set):
@@ -530,13 +576,12 @@ else:
                         if user_answers.get(idx, None) == q['answer']:
                             correct_count += 1
                     
-                    # Update score database
                     update_db_on_submission(st.session_state.current_user, correct_count, len(st.session_state.current_quiz_set), completed_ids)
                     st.session_state.session_correct = correct_count
                     st.session_state.quiz_submitted = True
                     st.rerun()
                     
-    # CASE 2: RESULTS SUBMITTED (SHOW CORRECTIONS)
+    # CASE 2: RESULTS SUBMITTED
     else:
         st.balloons()
         st.success(f"🎯 **Round Complete!** You scored **{st.session_state.session_correct} / {len(st.session_state.current_quiz_set)}** on this random draw.")
