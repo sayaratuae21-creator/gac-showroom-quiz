@@ -274,27 +274,17 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                     current_model_trim = f"GAC {model_label}"
                     
-                    # TYPE A: YES/NO BINARY INTERFACES (WITH BALANCED TRAP FLIPPING)
+                   # TYPE A: YES/NO BINARY INTERFACES (HIGH-VALUE TRIM TRAPS)
                     if is_binary_feature:
                         has_feature = raw_val.lower() in ['●', '•', 'yes', 'standard']
                         
-                        # Introduce trap logic roughly 50% of the time to break the "Always Yes" bias
+                        # Direct, clean phrasing only. No double negatives or "lacking" language.
                         if random.random() > 0.5:
-                            # Inverted question logic
-                            if random.random() > 0.5:
-                                q_text = f"Is the {feature_str} completely LACKING / omitted as a standard feature on the {current_model_trim}?"
-                            else:
-                                q_text = f"Is the {current_model_trim} NOT equipped with {feature_str} as part of its standard configurations?"
-                            
-                            correct_val = "No" if has_feature else "Yes"
+                            q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
                         else:
-                            # Standard question logic
-                            if random.random() > 0.5:
-                                q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
-                            else:
-                                q_text = f"Does the {current_model_trim} include a {feature_str} as a standard feature?"
-                            
-                            correct_val = "Yes" if has_feature else "No"
+                            q_text = f"Is {feature_str} included as a standard feature on the {current_model_trim}?"
+                        
+                        correct_val = "Yes" if has_feature else "No"
                         
                         pool_binary_yes_no.append({
                             "id": f"auto_binary_{question_id_counter}",
@@ -305,8 +295,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             "answer": correct_val
                         })
                         question_id_counter += 1
-                        continue
-                    
+                        continue                    
                     # TYPE B: INVERTED MODEL HUNT (WITH DUPLICATE VALUE FILTERING)
                     clean_spec = get_base_specification(raw_val)
                     if random.random() > 0.5:
