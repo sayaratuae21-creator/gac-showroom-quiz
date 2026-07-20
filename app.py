@@ -122,7 +122,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     def generate_close_digits_decoys(feature_name, original_text):
         """Finds numbers within the text answer and creates realistic variations, with specific automotive overrides."""
-        # Custom suspension type overrides to ensure high-quality, professional distractions
         if "suspension" in feature_name.lower():
             all_suspensions = ["Multi-Link", "Air Suspension", "Rigid Axle Suspension", "Adaptive/Electronic Suspension"]
             return [s for s in all_suspensions if s.lower() not in original_text.lower()][:3]
@@ -275,14 +274,27 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         
                     current_model_trim = f"GAC {model_label}"
                     
-                    # TYPE A: YES/NO BINARY INTERFACES
+                    # TYPE A: YES/NO BINARY INTERFACES (WITH BALANCED TRAP FLIPPING)
                     if is_binary_feature:
-                        correct_val = "Yes" if raw_val.lower() in ['●', '•', 'yes', 'standard'] else "No"
+                        has_feature = raw_val.lower() in ['●', '•', 'yes', 'standard']
                         
+                        # Introduce trap logic roughly 50% of the time to break the "Always Yes" bias
                         if random.random() > 0.5:
-                            q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
+                            # Inverted question logic
+                            if random.random() > 0.5:
+                                q_text = f"Is the {feature_str} completely LACKING / omitted as a standard feature on the {current_model_trim}?"
+                            else:
+                                q_text = f"Is the {current_model_trim} NOT equipped with {feature_str} as part of its standard configurations?"
+                            
+                            correct_val = "No" if has_feature else "Yes"
                         else:
-                            q_text = f"Does the {current_model_trim} include a {feature_str} as a standard feature?"
+                            # Standard question logic
+                            if random.random() > 0.5:
+                                q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
+                            else:
+                                q_text = f"Does the {current_model_trim} include a {feature_str} as a standard feature?"
+                            
+                            correct_val = "Yes" if has_feature else "No"
                         
                         pool_binary_yes_no.append({
                             "id": f"auto_binary_{question_id_counter}",
