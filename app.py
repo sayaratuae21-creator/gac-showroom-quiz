@@ -297,18 +297,26 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
                     
-                    # TYPE B: INVERTED MODEL HUNT (PREFFERED FOR DETAILED BRANDED SPECS)
+                    # TYPE B: INVERTED MODEL HUNT (WITH SMART PERFORMANCE VS EQUIPMENT PHRASING)
                     clean_spec = get_base_specification(raw_val)
                     
-                    # Force model hunt if spec mentions recognizable brands or descriptive specs
+                    # Detect if feature is a Performance/Measurement metric vs Hardware/Equipment
+                    performance_keywords = ['torque', 'power', 'horsepower', 'displacement', 'capacity', 'speed', 'acceleration', 'fuel consumption', 'volume', 'weight', 'dimension']
+                    is_performance = any(kw in feature_str.lower() for kw in performance_keywords)
+
+                    # Check for recognized branded component features
                     has_brand_or_detail = any(
                         brand in raw_val.lower() 
                         for brand in ['continental', 'brembo', 'bosch', 'harman', 'alpine', 'piston', 'michelin', 'dunlop']
                     )
                     
-                    # Attempt Type B question generation
-                    if random.random() > 0.3 or has_brand_or_detail:
-                        q_text = f"Which GAC model is equipped with '{clean_spec}' for its {feature_str}?"
+                    if random.random() > 0.3 or has_brand_or_detail or is_performance:
+                        # Dynamic grammar based on metric type
+                        if is_performance:
+                            q_text = f"Which GAC model produces / features a {feature_str} of '{clean_spec}'?"
+                        else:
+                            q_text = f"Which GAC model is equipped with '{clean_spec}' for its {feature_str}?"
+                        
                         correct_ans = current_model_trim
                         
                         model_decoys = []
@@ -334,7 +342,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 "answer": correct_ans
                             })
                             question_id_counter += 1
-                            continue # Skip Type C if Model Hunt succeeds
+                            continue
                             
                     # TYPE C: SPEC VALUE DETAILS (STRICT NO-NONSENSE DECOYS)
                     q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
