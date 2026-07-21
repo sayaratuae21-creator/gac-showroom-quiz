@@ -300,30 +300,43 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         continue
                     
                     # -----------------------------------------------------------
-                    # CATEGORY FILTERS FOR MODEL HUNT vs SPEC DETAIL
+                    # -----------------------------------------------------------
+                    # CATEGORY FILTERS & SMART PHRASING
                     # -----------------------------------------------------------
                     clean_spec = get_base_specification(raw_val)
                     
-                    # STRICT BLACKLIST: Features shared across many models MUST NOT be Model Hunt questions
+                    # 1. Shared specs (Never Model Hunt)
                     shared_non_unique_specs = ['drivetrain', 'drive type', 'drive mode', 'seating', 'seat', 'doors', 'cylinders', 'fuel tank', 'valves']
                     is_shared_spec = any(s in feat_key for s in shared_non_unique_specs)
 
-                    performance_keywords = ['torque', 'power', 'horsepower', 'displacement', 'speed', 'acceleration', 'fuel consumption', 'weight']
+                    # 2. Performance / Measurement metrics (Phrased as "offers / features a X of Y")
+                    performance_keywords = [
+                        'torque', 'power', 'horsepower', 'displacement', 'speed', 'acceleration', 
+                        'fuel consumption', 'weight', 'trunk', 'boot', 'cargo', 'clearance', 'volume', 'capacity'
+                    ]
                     is_performance = any(kw in feat_key for kw in performance_keywords) and not is_shared_spec
 
                     has_brand_or_detail = any(
                         brand in raw_val.lower() 
                         for brand in ['continental', 'brembo', 'bosch', 'harman', 'alpine', 'piston', 'michelin', 'dunlop']
                     )
+
+                    # 3. Handle Suspension Phrasing (Front vs Rear)
+                    display_feature_name = feature_str
+                    if 'suspension' in feat_key:
+                        if 'front' in current_section.lower() and 'front' not in feat_key:
+                            display_feature_name = f"Front {feature_str}"
+                        elif 'rear' in current_section.lower() and 'rear' not in feat_key:
+                            display_feature_name = f"Rear {feature_str}"
                     
                     # -----------------------------------------------------------
-                    # TYPE B: INVERTED MODEL HUNT (ONLY FOR TRULY UNIQUE BRANDED/PERFORMANCE SPECS)
+                    # TYPE B: INVERTED MODEL HUNT
                     # -----------------------------------------------------------
                     if (random.random() > 0.3 or has_brand_or_detail or is_performance) and not is_shared_spec:
                         if is_performance:
-                            q_text = f"Which GAC model produces a {feature_str} of '{clean_spec}'?"
+                            q_text = f"Which GAC model offers a {display_feature_name} of '{clean_spec}'?"
                         else:
-                            q_text = f"Which GAC model is equipped with '{clean_spec}' for its {feature_str}?"
+                            q_text = f"Which GAC model is equipped with '{clean_spec}' for its {display_feature_name}?"
                         
                         correct_ans = current_model_trim
                         model_decoys = []
@@ -332,7 +345,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 continue
                             decoy_val = feature_to_model_value_map.get(feat_key, {}).get(m_identity, "")
                             if decoy_val.lower() == clean_spec.lower():
-                                continue # Guarantees no duplicate correct answers
+                                continue # Prevent duplicate correct answers
                             model_decoys.append(m_identity)
                             
                         if len(model_decoys) >= 3:
@@ -349,7 +362,70 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 "answer": correct_ans
                             })
                             question_id_counter += 1
-                            continue # Skip Type C if Model Hunt succeeds
+                            continue
+
+                    # -----------------------------------------------------------
+                    # TYPE C: DIRECT SPECIFICATION DETAILS
+                    # -----------------------------------------------------------
+                    q_text = f"What is the '{display_feature_name}' for the {current_model_trim}?"
+                    correct_base = clean_spec
+                    correct_digits = extract_only_digits(correct_base)
+                    correct_has_digits = any(c.isdigit() for c in correct_base)
+                    
+                    seen_texts = {correct_base.lower()}
+                    seen_digits = {correct_digits} if correct_digits else set()
+                    
+                    raw_wrongs = set()
+                    if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
+                        for val_v in global_spec_database[current_section][feat_key]:
+                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a', 'standard', 'equipped']:
+                                raw_wrongs.add(val_v)
+                            
+                    selected_wrongs = []
+                    for rw in raw_wrongs:
+                        w_base = get_base_specification(rw)
+                        w_dig = extract_only_digits(w_base)
+                        
+                        if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
+                            continue
+                        if correct_has_digits != any(c.isdigit() for c in w_base):
+                            continue  
+                        
+                        correct_words = set(re.findall(r'\w{4,}', correct_base.lower()))
+                        decoy_words = set(re.findall(r'\w{4,}', w_base.lower()))
+                        if correct_words.intersection(decoy_words):
+                            continue
+                            
+                        seen_texts.add(w_base.lower())
+                        if w_dig:
+                            seen_digits.add(w_dig)
+                        selected_wrongs.append(w_base)
+                    
+                    final_wrongs = selected_wrongs[:3]
+                    
+                    if len(final_wrongs) < 3:
+                        numeric_decoys = generate_close_digits_decoys(display_feature_name, correct_base)
+                        for d_item in numeric_decoys:
+                            if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
+                                final_wrongs.append(d_item)
+                    
+                    if len(final_wrongs) < 3:
+                        continue
+
+                    options = [correct_base] + final_wrongs[:3]
+                    random.shuffle(options)
+                    
+                    pool_technical_specs.append({
+                        "id": f"auto_spec_{question_id_counter}",
+                        "category": current_section,
+                        "question": q_text,
+                        "options": options,
+                        "correct": correct_base,
+                        "answer": correct_base
+                    })
+                    question_id_counter += 1
+                    
+                    continue # Skip Type C if Model Hunt succeeds
 
                     # -----------------------------------------------------------
                     # TYPE C: DIRECT SPECIFICATION DETAILS (FOR SHARED/GENERIC METRICS)
