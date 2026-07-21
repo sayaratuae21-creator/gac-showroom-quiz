@@ -121,18 +121,21 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
         return "".join(re.findall(r'\d+', str(val_str)))
 
     def generate_close_digits_decoys(feature_name, original_text):
-        """Finds numbers within the text answer and creates realistic variations, with specific automotive overrides."""
-        if "suspension" in feature_name.lower():
-            all_suspensions = ["Multi-Link", "Air Suspension", "Rigid Axle Suspension", "Adaptive/Electronic Suspension"]
+        """Creates realistic numeric variations or smart domain-specific decoys without silly string repetitions."""
+        fname_lower = feature_name.lower()
+        
+        if "suspension" in fname_lower:
+            all_suspensions = ["MacPherson Strut", "Multi-Link", "Torsion Beam", "Double Wishbone"]
             return [s for s in all_suspensions if s.lower() not in original_text.lower()][:3]
 
-        if "drivetrain" in feature_name.lower() or "drive type" in feature_name.lower():
+        if "drivetrain" in fname_lower or "drive type" in fname_lower or "drive mode" in fname_lower:
             all_types = ["FWD", "RWD", "AWD", "4WD"]
             return [t for t in all_types if t.lower() not in original_text.lower()][:3]
 
         numbers = re.findall(r'\d+\.\d+|\d+', original_text)
         if not numbers:
-            return [f"{original_text} Edition", f"Premium {original_text}", f"Standard {original_text}"]
+            # NO MORE "Standard Standard" / "Premium Standard" fallbacks
+            return []
             
         decoys = set()
         attempts = 0
@@ -162,19 +165,16 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
             if altered_text != original_text and altered_text not in decoys:
                 decoys.add(altered_text)
                 
-        while len(decoys) < 3:
-            decoys.add(f"{original_text} (Alt {len(decoys)+1})")
-            
         return list(decoys)
 
     try:
         xls = pd.ExcelFile(filepath)
         global_spec_database = {}
-        feature_to_model_value_map = {} # Maps feat_key -> { model_trim_name -> base_value }
+        feature_to_model_value_map = {}
         parsed_sheets = []
         all_model_trim_identities = []
 
-        # PHASE 1: Build cross-model references
+        # PHASE 1: Parse Sheets and Map Cross-Model Features
         for sheet in xls.sheet_names:
             df_raw = pd.read_excel(filepath, sheet_name=sheet, header=None)
             header_row_idx = 0
@@ -233,7 +233,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             global_spec_database[current_section][feat_key].add(val_str)
                             feature_to_model_value_map[feat_key][model_trim_name] = get_base_specification(val_str)
 
-        # PHASE 2: Generate sorted question categorizations
+        # PHASE 2: Generate Questions
         for p in parsed_sheets:
             sheet_name = p["sheet_name"]
             df = p["df"]
@@ -257,7 +257,12 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 
                 feat_key = feature_str.lower()
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
-                is_binary_feature = all(v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'not available', 'n/a', ''] for v in all_trim_values)
+                
+                # ENHANCED BINARY CHECK: Features answered with "Standard", "Equipped", "Yes", or symbols are forced to Type A (Yes/No)
+                is_binary_feature = all(
+                    v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'equipped', 'not available', 'n/a', ''] 
+                    for v in all_trim_values
+                )
                 
                 for trim in trim_cols:
                     val_check = row[trim]
@@ -267,18 +272,13 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         continue
                         
                     clean_trim = trim.strip()
-                    if clean_trim:
-                        model_label = f"{sheet_name.strip()} ({clean_trim})"
-                    else:
-                        model_label = f"{sheet_name.strip()}"
-                        
+                    model_label = f"{sheet_name.strip()} ({clean_trim})" if clean_trim else f"{sheet_name.strip()}"
                     current_model_trim = f"GAC {model_label}"
                     
-                   # TYPE A: YES/NO BINARY INTERFACES (HIGH-VALUE TRIM TRAPS)
+                    # TYPE A: CLEAN YES/NO BINARY INTERFACES
                     if is_binary_feature:
-                        has_feature = raw_val.lower() in ['●', '•', 'yes', 'standard']
+                        has_feature = raw_val.lower() in ['●', '•', 'yes', 'standard', 'equipped']
                         
-                        # Direct, clean phrasing only. No double negatives or "lacking" language.
                         if random.random() > 0.5:
                             q_text = f"Does the {current_model_trim} come equipped with {feature_str} as a standard feature?"
                         else:
@@ -295,14 +295,14 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             "answer": correct_val
                         })
                         question_id_counter += 1
-                        continue                    
-                    # TYPE B: INVERTED MODEL HUNT (WITH DUPLICATE VALUE FILTERING)
+                        continue
+                    
+                    # TYPE B: INVERTED MODEL HUNT
                     clean_spec = get_base_specification(raw_val)
                     if random.random() > 0.5:
                         q_text = f"Which GAC model has a {feature_str} of {clean_spec}?"
                         correct_ans = current_model_trim
                         
-                        # Filter out any decoy models that share this EXACT same specification value
                         model_decoys = []
                         for m_identity in all_model_trim_identities:
                             if m_identity == current_model_trim:
@@ -328,7 +328,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             question_id_counter += 1
                             continue
 
-                    # TYPE C: SPEC VALUE DETAILS
+                    # TYPE C: SPEC VALUE DETAILS (STRICT NO-NONSENSE DECOYS)
                     q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
                     correct_base = clean_spec
                     correct_digits = extract_only_digits(correct_base)
@@ -340,7 +340,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     raw_wrongs = set()
                     if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
                         for val_v in global_spec_database[current_section][feat_key]:
-                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a']:
+                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a', 'standard', 'equipped']:
                                 raw_wrongs.add(val_v)
                             
                     selected_wrongs = []
@@ -353,11 +353,10 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         if correct_has_digits != any(c.isdigit() for c in w_base):
                             continue  
                         
-                        # --- KEYWORD OVERLAP FILTER (STOPS REPEATED MEANINGS) ---
                         correct_words = set(re.findall(r'\w{4,}', correct_base.lower()))
                         decoy_words = set(re.findall(r'\w{4,}', w_base.lower()))
                         if correct_words.intersection(decoy_words):
-                            continue  # Skip decoys that share major words like "McPherson" or "Independent"
+                            continue
                             
                         seen_texts.add(w_base.lower())
                         if w_dig:
@@ -366,13 +365,17 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     
                     final_wrongs = selected_wrongs[:3]
                     
-                    # Force-inject preferred suspension options for any suspension related query
-                    if len(final_wrongs) < 3 or "suspension" in feature_str.lower() or "drivetrain" in feature_str.lower() or "drive type" in feature_str.lower():
+                    # Fill missing options using clean domain decoys only if numbers/categories exist
+                    if len(final_wrongs) < 3:
                         numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
                         for d_item in numeric_decoys:
                             if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
                                 final_wrongs.append(d_item)
                     
+                    # DISCARD LOW-VALUE QUESTIONS THAT CANNOT GENERATE 3 VALID WRONG ANSWERS
+                    if len(final_wrongs) < 3:
+                        continue
+
                     options = [correct_base] + final_wrongs[:3]
                     random.shuffle(options)
                     
@@ -386,7 +389,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     })
                     question_id_counter += 1
 
-        # PHASE 3: STRICT 2/5 (40%) BALANCE MIXER
+        # PHASE 3: BALANCE MIXER (40% Yes/No, 60% Technical Specs)
         TOTAL_QUIZ_SIZE = 10 
         target_binary_count = int(TOTAL_QUIZ_SIZE * (2 / 5)) 
         target_tech_count = TOTAL_QUIZ_SIZE - target_binary_count 
@@ -403,7 +406,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     except Exception as e:
         return []
-
 # Load the dynamic pool into memory
 MASTER_QUESTION_POOL = load_questions_from_excel()
 
