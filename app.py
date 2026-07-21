@@ -233,7 +233,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             global_spec_database[current_section][feat_key].add(val_str)
                             feature_to_model_value_map[feat_key][model_trim_name] = get_base_specification(val_str)
 
-        # PHASE 2: Generate Questions
+       # PHASE 2: Generate sorted question categorizations
         for p in parsed_sheets:
             sheet_name = p["sheet_name"]
             df = p["df"]
@@ -258,7 +258,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                 feat_key = feature_str.lower()
                 all_trim_values = [str(row[t]).strip().lower() for t in trim_cols if pd.notna(row[t])]
                 
-                # ENHANCED BINARY CHECK: Features answered with "Standard", "Equipped", "Yes", or symbols are forced to Type A (Yes/No)
+                # Check for standard binary/feature toggle
                 is_binary_feature = all(
                     v in ['●', '○', '■', '-', '•', 'yes', 'no', 'standard', 'equipped', 'not available', 'n/a', ''] 
                     for v in all_trim_values
@@ -275,7 +275,9 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                     model_label = f"{sheet_name.strip()} ({clean_trim})" if clean_trim else f"{sheet_name.strip()}"
                     current_model_trim = f"GAC {model_label}"
                     
+                    # -----------------------------------------------------------
                     # TYPE A: CLEAN YES/NO BINARY INTERFACES
+                    # -----------------------------------------------------------
                     if is_binary_feature:
                         has_feature = raw_val.lower() in ['●', '•', 'yes', 'standard', 'equipped']
                         
@@ -297,35 +299,40 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
                     
-                    # TYPE B: INVERTED MODEL HUNT (WITH SMART PERFORMANCE VS EQUIPMENT PHRASING)
+                    # -----------------------------------------------------------
+                    # CATEGORY FILTERS FOR MODEL HUNT vs SPEC DETAIL
+                    # -----------------------------------------------------------
                     clean_spec = get_base_specification(raw_val)
                     
-                    # Detect if feature is a Performance/Measurement metric vs Hardware/Equipment
-                    performance_keywords = ['torque', 'power', 'horsepower', 'displacement', 'capacity', 'speed', 'acceleration', 'fuel consumption', 'volume', 'weight', 'dimension']
-                    is_performance = any(kw in feature_str.lower() for kw in performance_keywords)
+                    # STRICT BLACKLIST: Features shared across many models MUST NOT be Model Hunt questions
+                    shared_non_unique_specs = ['drivetrain', 'drive type', 'drive mode', 'seating', 'seat', 'doors', 'cylinders', 'fuel tank', 'valves']
+                    is_shared_spec = any(s in feat_key for s in shared_non_unique_specs)
 
-                    # Check for recognized branded component features
+                    performance_keywords = ['torque', 'power', 'horsepower', 'displacement', 'speed', 'acceleration', 'fuel consumption', 'weight']
+                    is_performance = any(kw in feat_key for kw in performance_keywords) and not is_shared_spec
+
                     has_brand_or_detail = any(
                         brand in raw_val.lower() 
                         for brand in ['continental', 'brembo', 'bosch', 'harman', 'alpine', 'piston', 'michelin', 'dunlop']
                     )
                     
-                    if random.random() > 0.3 or has_brand_or_detail or is_performance:
-                        # Dynamic grammar based on metric type
+                    # -----------------------------------------------------------
+                    # TYPE B: INVERTED MODEL HUNT (ONLY FOR TRULY UNIQUE BRANDED/PERFORMANCE SPECS)
+                    # -----------------------------------------------------------
+                    if (random.random() > 0.3 or has_brand_or_detail or is_performance) and not is_shared_spec:
                         if is_performance:
-                            q_text = f"Which GAC model produces / features a {feature_str} of '{clean_spec}'?"
+                            q_text = f"Which GAC model produces a {feature_str} of '{clean_spec}'?"
                         else:
                             q_text = f"Which GAC model is equipped with '{clean_spec}' for its {feature_str}?"
                         
                         correct_ans = current_model_trim
-                        
                         model_decoys = []
                         for m_identity in all_model_trim_identities:
                             if m_identity == current_model_trim:
                                 continue
                             decoy_val = feature_to_model_value_map.get(feat_key, {}).get(m_identity, "")
                             if decoy_val.lower() == clean_spec.lower():
-                                continue 
+                                continue # Guarantees no duplicate correct answers
                             model_decoys.append(m_identity)
                             
                         if len(model_decoys) >= 3:
@@ -342,8 +349,70 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 "answer": correct_ans
                             })
                             question_id_counter += 1
+                            continue # Skip Type C if Model Hunt succeeds
+
+                    # -----------------------------------------------------------
+                    # TYPE C: DIRECT SPECIFICATION DETAILS (FOR SHARED/GENERIC METRICS)
+                    # -----------------------------------------------------------
+                    q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
+                    correct_base = clean_spec
+                    correct_digits = extract_only_digits(correct_base)
+                    correct_has_digits = any(c.isdigit() for c in correct_base)
+                    
+                    seen_texts = {correct_base.lower()}
+                    seen_digits = {correct_digits} if correct_digits else set()
+                    
+                    raw_wrongs = set()
+                    if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
+                        for val_v in global_spec_database[current_section][feat_key]:
+                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a', 'standard', 'equipped']:
+                                raw_wrongs.add(val_v)
+                            
+                    selected_wrongs = []
+                    for rw in raw_wrongs:
+                        w_base = get_base_specification(rw)
+                        w_dig = extract_only_digits(w_base)
+                        
+                        if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
+                            continue
+                        if correct_has_digits != any(c.isdigit() for c in w_base):
+                            continue  
+                        
+                        correct_words = set(re.findall(r'\w{4,}', correct_base.lower()))
+                        decoy_words = set(re.findall(r'\w{4,}', w_base.lower()))
+                        if correct_words.intersection(decoy_words):
                             continue
                             
+                        seen_texts.add(w_base.lower())
+                        if w_dig:
+                            seen_digits.add(w_dig)
+                        selected_wrongs.append(w_base)
+                    
+                    final_wrongs = selected_wrongs[:3]
+                    
+                    # Fill missing options using domain decoys
+                    if len(final_wrongs) < 3:
+                        numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
+                        for d_item in numeric_decoys:
+                            if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
+                                final_wrongs.append(d_item)
+                    
+                    if len(final_wrongs) < 3:
+                        continue
+
+                    options = [correct_base] + final_wrongs[:3]
+                    random.shuffle(options)
+                    
+                    pool_technical_specs.append({
+                        "id": f"auto_spec_{question_id_counter}",
+                        "category": current_section,
+                        "question": q_text,
+                        "options": options,
+                        "correct": correct_base,
+                        "answer": correct_base
+                    })
+                    question_id_counter += 1
+                    
                     # TYPE C: SPEC VALUE DETAILS (STRICT NO-NONSENSE DECOYS)
                     q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
                     correct_base = clean_spec
