@@ -297,10 +297,18 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         question_id_counter += 1
                         continue
                     
-                    # TYPE B: INVERTED MODEL HUNT
+                    # TYPE B: INVERTED MODEL HUNT (PREFFERED FOR DETAILED BRANDED SPECS)
                     clean_spec = get_base_specification(raw_val)
-                    if random.random() > 0.5:
-                        q_text = f"Which GAC model has a {feature_str} of {clean_spec}?"
+                    
+                    # Force model hunt if spec mentions recognizable brands or descriptive specs
+                    has_brand_or_detail = any(
+                        brand in raw_val.lower() 
+                        for brand in ['continental', 'brembo', 'bosch', 'harman', 'alpine', 'piston', 'michelin', 'dunlop']
+                    )
+                    
+                    # Attempt Type B question generation
+                    if random.random() > 0.3 or has_brand_or_detail:
+                        q_text = f"Which GAC model is equipped with '{clean_spec}' for its {feature_str}?"
                         correct_ans = current_model_trim
                         
                         model_decoys = []
@@ -326,8 +334,8 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 "answer": correct_ans
                             })
                             question_id_counter += 1
-                            continue
-
+                            continue # Skip Type C if Model Hunt succeeds
+                            
                     # TYPE C: SPEC VALUE DETAILS (STRICT NO-NONSENSE DECOYS)
                     q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
                     correct_base = clean_spec
