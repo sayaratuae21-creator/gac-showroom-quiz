@@ -7,45 +7,73 @@ import re
 import copy
 
 # Set up page config
-st.set_page_config(page_title="GAC – Product Learning", layout="wide")
+import streamlit as st
 
-# --- CUSTOM SIDEBAR & INPUT BOX STYLING ---
-st.markdown(
-    """
+# Custom Professional Styling
+st.markdown("""
     <style>
-    /* 1. Style the text input field in the sidebar (Make it highly visible light-gray) */
-    [data-testid="stSidebar"] .stTextInput input {
-        background-color: #EAECEF !important;     /* Distinct light gray background */
-        color: #111111 !important;                /* Dark, highly readable text */
-        border: 1.5px solid #A0AAB2 !important;   /* Solid border to define the box */
-        border-radius: 6px !important;            /* Clean rounded corners */
-        padding: 8px 12px !important;
+    /* Executive Header Styling */
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #1E293B;
+        margin-bottom: 0px;
     }
-    
-    /* Highlight the box with a GAC Blue outline when clicked/focused */
-    [data-testid="stSidebar"] .stTextInput input:focus {
-        border-color: #0F2942 !important;
-        box-shadow: 0 0 0 0.2rem rgba(15, 41, 66, 0.2) !important;
-        background-color: #EAECEF !important;
+    .sub-header {
+        font-size: 1.1rem;
+        color: #64748B;
+        font-weight: 400;
+        margin-bottom: 20px;
     }
-
-    /* 2. Style the table headers in the sidebar ranking */
-    [data-testid="stSidebar"] table th {
-        background-color: #0F2942 !important;     /* Deep Premium GAC Blue header */
-        color: #FFFFFF !important;                /* Bold white text */
-        font-weight: bold !important;
-        text-align: center !important;
-    }
-    
-    /* Center align the rankings data inside the table cells */
-    [data-testid="stSidebar"] table td {
-        text-align: center !important;
+    /* Info Card Container */
+    .welcome-card {
+        background-color: #F8FAFC;
+        border-left: 5px solid #0284C7;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 25px;
     }
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
+# -----------------------------------------------------------
+# MAIN LANDING PAGE HEADER
+# -----------------------------------------------------------
+st.markdown('<p class="main-header">GAC Motor | Product Knowledge Hub</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Automotive Sales Excellence & Specification Training Engine</p>', unsafe_allow_html=True)
+st.divider()
+
+# Logged Out / Initial Welcome State
+if "logged_in_user" not in st.session_state or not st.session_state["logged_in_user"]:
+    
+    # Quick Executive Overview Metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label="Lineup Vehicles", value="7 Models")
+    with col2:
+        st.metric(label="Question Modules", value="Specs & Features")
+    with col3:
+        st.metric(label="Training Mode", value="Dynamic / Adaptive")
+
+    st.markdown("---")
+
+    # Instructions Card
+    st.markdown("""
+        <div class="welcome-card">
+            <h4 style="margin-top:0; color:#0F172A;">Welcome Sales Executive</h4>
+            <p style="color:#334155; margin-bottom:10px;">
+                This portal tests real-time product knowledge, vehicle specifications, trim levels, and standard vs. optional features across the GAC lineup.
+            </p>
+            <ol style="color:#475569; margin-left: -15px;">
+                <li>Enter your registered name in the <b>Sidebar Menu</b> on the left.</li>
+                <li>Click <b>"Start Assessment Round"</b> to generate a dynamic question set.</li>
+                <li>Track your cumulative accuracy on the live showroom leaderboard.</li>
+            </ol>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.info("👈 Please enter your details in the sidebar to initiate your evaluation session.")
+    
 # --- CUSTOM BACKGROUND IMAGE ---
 BACKGROUND_IMAGE_URL = "https://i.postimg.cc/g0Nw6495/GS3.png"
 
