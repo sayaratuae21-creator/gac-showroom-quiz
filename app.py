@@ -9,31 +9,40 @@ import copy
 # Set up page config
 import streamlit as st
 
-# Custom Professional Styling
+# -----------------------------------------------------------
+# REDESIGNED OPENING PAGE (KEEPING ORIGINAL TEXT & STRUCTURE)
+# -----------------------------------------------------------
+
+# Vibrant Title & Subtitle
 st.markdown("""
-    <style>
-    /* Executive Header Styling */
-    .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E293B;
-        margin-bottom: 0px;
-    }
-    .sub-header {
-        font-size: 1.1rem;
-        color: #64748B;
-        font-weight: 400;
-        margin-bottom: 20px;
-    }
-    /* Info Card Container */
-    .welcome-card {
-        background-color: #F8FAFC;
-        border-left: 5px solid #0284C7;
-        padding: 20px;
+    <div style="padding: 10px 0px 5px 0px;">
+        <h1 style="color: #0F172A; font-weight: 800; font-size: 2.3rem; margin-bottom: 0px;">
+            🚙 GAC Showroom Dynamic Training Engine
+        </h1>
+        <p style="color: #2563EB; font-weight: 600; font-size: 1.15rem; margin-top: 5px;">
+            Randomized assessments to master vehicle trims and features
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
+st.divider()
+
+# Styled Banner Box (Original Content with Color & Border)
+st.markdown("""
+    <div style="
+        background: linear-gradient(90deg, #EFF6FF 0%, #F0F9FF 100%);
+        border-left: 5px solid #2563EB;
         border-radius: 8px;
-        margin-bottom: 25px;
-    }
-    </style>
+        padding: 16px 20px;
+        margin-top: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.04);
+    ">
+        <p style="color: #1E3A8A; font-size: 1.05rem; font-weight: 500; margin: 0; line-height: 1.5;">
+            👋 <strong style="color: #1D4ED8;">Welcome to the Product Knowledge Hub.</strong> 
+            Enter your name in the sidebar menu. The app will fetch questions from the live database that you have never completed before.
+        </p>
+    </div>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------
