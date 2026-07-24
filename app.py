@@ -330,13 +330,54 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             display_feature_name = f"Rear {feature_str}"
                     
                     # -----------------------------------------------------------
-                    # TYPE B: INVERTED MODEL HUNT
-                    # -----------------------------------------------------------
-                    if (random.random() > 0.3 or has_brand_or_detail or is_performance) and not is_shared_spec:
-                        if is_performance:
-                            q_text = f"Which GAC model offers a {display_feature_name} of '{clean_spec}'?"
+                   # --- HELPER: CLEAN UP FEATURE NAMES & UNITS FOR NATURAL QUESTION PHRASING ---
+                    def format_natural_question(feat_title, value_text):
+                        clean_val = str(value_text).replace("'", "").strip()
+                        
+                        # Extract unit if embedded in header (e.g., "(km/h)", "(cc)", "(hp)")
+                        unit_match = re.search(r'\((.*?)\)', feat_title)
+                        unit = unit_match.group(1).strip() if unit_match else ""
+                        
+                        # Clean feature name
+                        clean_title = re.sub(r'\(.*?\)', '', feat_title).strip()
+                        title_lower = clean_title.lower()
+                        
+                        # Map common technical terms to natural phrasing
+                        phrasing_map = {
+                            "max speed": "maximum speed",
+                            "max. speed": "maximum speed",
+                            "displacement": "engine displacement",
+                            "engine displacement": "engine displacement",
+                            "max power": "maximum power",
+                            "max. power": "maximum power",
+                            "max torque": "maximum torque",
+                            "max. torque": "maximum torque",
+                            "wheelbase": "wheelbase",
+                            "curb weight": "curb weight",
+                            "fuel tank capacity": "fuel tank capacity"
+                        }
+                        
+                        natural_title = phrasing_map.get(title_lower, title_lower)
+                        
+                        # Format number if numeric (e.g., 1991 -> 1,991)
+                        if clean_val.isdigit():
+                            formatted_val = f"{int(clean_val):,}"
                         else:
-                            q_text = f"Which GAC model is equipped with '{clean_spec}' for its {display_feature_name}?"
+                            formatted_val = clean_val
+
+                        # Attach unit to value if available
+                        if unit and unit.lower() not in formatted_val.lower():
+                            formatted_val = f"{formatted_val} {unit}"
+
+                        # Handle correct grammar ("a" vs "an")
+                        vowels = ('a', 'e', 'i', 'o', 'u')
+                        article = "an" if natural_title.startswith(vowels) else "a"
+
+                        return f"Which GAC model has {article} {natural_title} of {formatted_val}?"
+
+                    # TYPE B: INVERTED MODEL HUNT
+                    if (random.random() > 0.3 or has_brand_or_detail or is_performance) and not is_shared_spec:
+                        q_text = format_natural_question(display_feature_name, clean_spec)
                         
                         correct_ans = current_model_trim
                         model_decoys = []
@@ -345,7 +386,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                                 continue
                             decoy_val = feature_to_model_value_map.get(feat_key, {}).get(m_identity, "")
                             if decoy_val.lower() == clean_spec.lower():
-                                continue # Prevent duplicate correct answers
+                                continue
                             model_decoys.append(m_identity)
                             
                         if len(model_decoys) >= 3:
@@ -363,7 +404,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             })
                             question_id_counter += 1
                             continue
-
                     # -----------------------------------------------------------
                     # TYPE C: DIRECT SPECIFICATION DETAILS
                     # -----------------------------------------------------------
