@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import requests
@@ -134,7 +135,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
         numbers = re.findall(r'\d+\.\d+|\d+', original_text)
         if not numbers:
-            # NO MORE "Standard Standard" / "Premium Standard" fallbacks
             return []
             
         decoys = set()
@@ -233,7 +233,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             global_spec_database[current_section][feat_key].add(val_str)
                             feature_to_model_value_map[feat_key][model_trim_name] = get_base_specification(val_str)
 
-       # PHASE 2: Generate sorted question categorizations
+        # PHASE 2: Generate sorted question categorizations
         for p in parsed_sheets:
             sheet_name = p["sheet_name"]
             df = p["df"]
@@ -300,16 +300,13 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         continue
                     
                     # -----------------------------------------------------------
-                    # -----------------------------------------------------------
                     # CATEGORY FILTERS & SMART PHRASING
                     # -----------------------------------------------------------
                     clean_spec = get_base_specification(raw_val)
                     
-                    # 1. Shared specs (Never Model Hunt)
                     shared_non_unique_specs = ['drivetrain', 'drive type', 'drive mode', 'seating', 'seat', 'doors', 'cylinders', 'fuel tank', 'valves']
                     is_shared_spec = any(s in feat_key for s in shared_non_unique_specs)
 
-                    # 2. Performance / Measurement metrics (Phrased as "offers / features a X of Y")
                     performance_keywords = [
                         'torque', 'power', 'horsepower', 'displacement', 'speed', 'acceleration', 
                         'fuel consumption', 'weight', 'trunk', 'boot', 'cargo', 'clearance', 'volume', 'capacity'
@@ -321,7 +318,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         for brand in ['continental', 'brembo', 'bosch', 'harman', 'alpine', 'piston', 'michelin', 'dunlop']
                     )
 
-                    # 3. Handle Suspension Phrasing (Front vs Rear)
                     display_feature_name = feature_str
                     if 'suspension' in feat_key:
                         if 'front' in current_section.lower() and 'front' not in feat_key:
@@ -330,54 +326,13 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             display_feature_name = f"Rear {feature_str}"
                     
                     # -----------------------------------------------------------
-                   # --- HELPER: CLEAN UP FEATURE NAMES & UNITS FOR NATURAL QUESTION PHRASING ---
-                    def format_natural_question(feat_title, value_text):
-                        clean_val = str(value_text).replace("'", "").strip()
-                        
-                        # Extract unit if embedded in header (e.g., "(km/h)", "(cc)", "(hp)")
-                        unit_match = re.search(r'\((.*?)\)', feat_title)
-                        unit = unit_match.group(1).strip() if unit_match else ""
-                        
-                        # Clean feature name
-                        clean_title = re.sub(r'\(.*?\)', '', feat_title).strip()
-                        title_lower = clean_title.lower()
-                        
-                        # Map common technical terms to natural phrasing
-                        phrasing_map = {
-                            "max speed": "maximum speed",
-                            "max. speed": "maximum speed",
-                            "displacement": "engine displacement",
-                            "engine displacement": "engine displacement",
-                            "max power": "maximum power",
-                            "max. power": "maximum power",
-                            "max torque": "maximum torque",
-                            "max. torque": "maximum torque",
-                            "wheelbase": "wheelbase",
-                            "curb weight": "curb weight",
-                            "fuel tank capacity": "fuel tank capacity"
-                        }
-                        
-                        natural_title = phrasing_map.get(title_lower, title_lower)
-                        
-                        # Format number if numeric (e.g., 1991 -> 1,991)
-                        if clean_val.isdigit():
-                            formatted_val = f"{int(clean_val):,}"
-                        else:
-                            formatted_val = clean_val
-
-                        # Attach unit to value if available
-                        if unit and unit.lower() not in formatted_val.lower():
-                            formatted_val = f"{formatted_val} {unit}"
-
-                        # Handle correct grammar ("a" vs "an")
-                        vowels = ('a', 'e', 'i', 'o', 'u')
-                        article = "an" if natural_title.startswith(vowels) else "a"
-
-                        return f"Which GAC model has {article} {natural_title} of {formatted_val}?"
-
                     # TYPE B: INVERTED MODEL HUNT
+                    # -----------------------------------------------------------
                     if (random.random() > 0.3 or has_brand_or_detail or is_performance) and not is_shared_spec:
-                        q_text = format_natural_question(display_feature_name, clean_spec)
+                        if is_performance:
+                            q_text = f"Which GAC model offers a {display_feature_name} of '{clean_spec}'?"
+                        else:
+                            q_text = f"Which GAC model is equipped with '{clean_spec}' for its {display_feature_name}?"
                         
                         correct_ans = current_model_trim
                         model_decoys = []
@@ -404,6 +359,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                             })
                             question_id_counter += 1
                             continue
+
                     # -----------------------------------------------------------
                     # TYPE C: DIRECT SPECIFICATION DETAILS
                     # -----------------------------------------------------------
@@ -464,131 +420,6 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
                         "answer": correct_base
                     })
                     question_id_counter += 1
-                    
-                    continue # Skip Type C if Model Hunt succeeds
-
-                    # -----------------------------------------------------------
-                    # TYPE C: DIRECT SPECIFICATION DETAILS (FOR SHARED/GENERIC METRICS)
-                    # -----------------------------------------------------------
-                    q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
-                    correct_base = clean_spec
-                    correct_digits = extract_only_digits(correct_base)
-                    correct_has_digits = any(c.isdigit() for c in correct_base)
-                    
-                    seen_texts = {correct_base.lower()}
-                    seen_digits = {correct_digits} if correct_digits else set()
-                    
-                    raw_wrongs = set()
-                    if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
-                        for val_v in global_spec_database[current_section][feat_key]:
-                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a', 'standard', 'equipped']:
-                                raw_wrongs.add(val_v)
-                            
-                    selected_wrongs = []
-                    for rw in raw_wrongs:
-                        w_base = get_base_specification(rw)
-                        w_dig = extract_only_digits(w_base)
-                        
-                        if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
-                            continue
-                        if correct_has_digits != any(c.isdigit() for c in w_base):
-                            continue  
-                        
-                        correct_words = set(re.findall(r'\w{4,}', correct_base.lower()))
-                        decoy_words = set(re.findall(r'\w{4,}', w_base.lower()))
-                        if correct_words.intersection(decoy_words):
-                            continue
-                            
-                        seen_texts.add(w_base.lower())
-                        if w_dig:
-                            seen_digits.add(w_dig)
-                        selected_wrongs.append(w_base)
-                    
-                    final_wrongs = selected_wrongs[:3]
-                    
-                    # Fill missing options using domain decoys
-                    if len(final_wrongs) < 3:
-                        numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
-                        for d_item in numeric_decoys:
-                            if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
-                                final_wrongs.append(d_item)
-                    
-                    if len(final_wrongs) < 3:
-                        continue
-
-                    options = [correct_base] + final_wrongs[:3]
-                    random.shuffle(options)
-                    
-                    pool_technical_specs.append({
-                        "id": f"auto_spec_{question_id_counter}",
-                        "category": current_section,
-                        "question": q_text,
-                        "options": options,
-                        "correct": correct_base,
-                        "answer": correct_base
-                    })
-                    question_id_counter += 1
-                    
-                    # TYPE C: SPEC VALUE DETAILS (STRICT NO-NONSENSE DECOYS)
-                    q_text = f"What is the '{feature_str}' for the {current_model_trim}?"
-                    correct_base = clean_spec
-                    correct_digits = extract_only_digits(correct_base)
-                    correct_has_digits = any(c.isdigit() for c in correct_base)
-                    
-                    seen_texts = {correct_base.lower()}
-                    seen_digits = {correct_digits} if correct_digits else set()
-                    
-                    raw_wrongs = set()
-                    if current_section in global_spec_database and feat_key in global_spec_database[current_section]:
-                        for val_v in global_spec_database[current_section][feat_key]:
-                            if val_v.lower() not in ['-', '', 'nan', 'not available', 'n/a', 'standard', 'equipped']:
-                                raw_wrongs.add(val_v)
-                            
-                    selected_wrongs = []
-                    for rw in raw_wrongs:
-                        w_base = get_base_specification(rw)
-                        w_dig = extract_only_digits(w_base)
-                        
-                        if w_base == "" or w_base.lower() in seen_texts or (w_dig and w_dig in seen_digits):
-                            continue
-                        if correct_has_digits != any(c.isdigit() for c in w_base):
-                            continue  
-                        
-                        correct_words = set(re.findall(r'\w{4,}', correct_base.lower()))
-                        decoy_words = set(re.findall(r'\w{4,}', w_base.lower()))
-                        if correct_words.intersection(decoy_words):
-                            continue
-                            
-                        seen_texts.add(w_base.lower())
-                        if w_dig:
-                            seen_digits.add(w_dig)
-                        selected_wrongs.append(w_base)
-                    
-                    final_wrongs = selected_wrongs[:3]
-                    
-                    # Fill missing options using clean domain decoys only if numbers/categories exist
-                    if len(final_wrongs) < 3:
-                        numeric_decoys = generate_close_digits_decoys(feature_str, correct_base)
-                        for d_item in numeric_decoys:
-                            if d_item.lower() not in seen_texts and len(final_wrongs) < 3:
-                                final_wrongs.append(d_item)
-                    
-                    # DISCARD LOW-VALUE QUESTIONS THAT CANNOT GENERATE 3 VALID WRONG ANSWERS
-                    if len(final_wrongs) < 3:
-                        continue
-
-                    options = [correct_base] + final_wrongs[:3]
-                    random.shuffle(options)
-                    
-                    pool_technical_specs.append({
-                        "id": f"auto_spec_{question_id_counter}",
-                        "category": current_section,
-                        "question": q_text,
-                        "options": options,
-                        "correct": correct_base,
-                        "answer": correct_base
-                    })
-                    question_id_counter += 1
 
         # PHASE 3: BALANCE MIXER (40% Yes/No, 60% Technical Specs)
         TOTAL_QUIZ_SIZE = 10 
@@ -607,6 +438,7 @@ def load_questions_from_excel(filepath="GIMINI SPECS.xlsx"):
 
     except Exception as e:
         return []
+
 # Load the dynamic pool into memory
 MASTER_QUESTION_POOL = load_questions_from_excel()
 
@@ -694,9 +526,39 @@ def generate_user_round(username):
     st.session_state.saved_answers = {}
     st.session_state.user_unseen_deck = [q for q in MASTER_QUESTION_POOL if q["id"] not in seen_ids]
 
-# --- HEADER UI ---
-st.title("🚘 GAC Showroom Dynamic Training Engine")
-st.subheader("Randomized assessments to master vehicle trims and features")
+# --- MAIN LANDING PAGE HEADER WITH DYNAMIC GAC PHOTO ---
+IMAGE_FOLDER = "assets"
+
+def get_random_gac_image():
+    if os.path.exists(IMAGE_FOLDER):
+        images = [f for f in os.listdir(IMAGE_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+        if images:
+            return os.path.join(IMAGE_FOLDER, random.choice(images))
+    return None
+
+if "header_car_img" not in st.session_state or st.session_state.header_car_img is None:
+    st.session_state.header_car_img = get_random_gac_image()
+
+col_car, col_title = st.columns([1.2, 5], vertical_alignment="center")
+
+with col_car:
+    if st.session_state.header_car_img:
+        st.image(st.session_state.header_car_img, use_container_width=True)
+    else:
+        st.write("🚙")
+
+with col_title:
+    st.markdown("""
+        <div style="padding: 0px;">
+            <h1 style="color: #0F172A; font-weight: 800; font-size: 2.2rem; margin: 0px;">
+                GAC Showroom Dynamic Training Engine
+            </h1>
+            <p style="color: #2563EB; font-weight: 600; font-size: 1.1rem; margin-top: 4px; margin-bottom: 0px;">
+                Randomized assessments to master vehicle trims and features
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
 st.markdown("---")
 
 # --- SIDEBAR LEADERBOARD & LOGIN ---
