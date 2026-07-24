@@ -526,7 +526,7 @@ def generate_user_round(username):
     st.session_state.saved_answers = {}
     st.session_state.user_unseen_deck = [q for q in MASTER_QUESTION_POOL if q["id"] not in seen_ids]
 
-# --- MAIN LANDING PAGE HEADER WITH DYNAMIC GAC PHOTO ---
+# --- MAIN LANDING PAGE HEADER WITH LOCAL GAC PHOTOS ---
 IMAGE_FOLDER = "assets"
 
 def get_random_gac_image():
@@ -536,14 +536,15 @@ def get_random_gac_image():
             return os.path.join(IMAGE_FOLDER, random.choice(images))
     return None
 
+# Pick image once per session
 if "header_car_img" not in st.session_state or st.session_state.header_car_img is None:
     st.session_state.header_car_img = get_random_gac_image()
 
-col_car, col_title = st.columns([1.2, 5], vertical_alignment="center")
+col_car, col_title = st.columns([1.5, 5], vertical_alignment="center")
 
 with col_car:
     if st.session_state.header_car_img:
-        st.image(st.session_state.header_car_img, use_container_width=True)
+        st.image(st.session_state.header_car_img, width=130)
     else:
         st.write("🚙")
 
